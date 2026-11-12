@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Zamp AI Solutions · Person-First Pipeline (Tier 3)</title>
+  <title>Zamp AI Solutions · Person-First Outreach</title>
   <link rel="stylesheet" href="/static/style.css?v=8" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,14 +21,11 @@
     </div>
     <div class="header-center">
       <nav class="nav-tabs">
-        <a href="/" class="nav-tab">Company Pipeline (Tier 0)</a>
-        <a href="/recipient" class="nav-tab">Recipient Pipeline (Tier 1 & 2)</a>
-        <a href="/tier3" class="nav-tab active" style="position: relative;">
-          Person Pipeline (Tier 3)
-          <span style="display: inline-block; font-size: 0.65rem; background: #10B981; color: #fff; padding: 1px 5px; border-radius: 4px; margin-left: 4px; vertical-align: middle;">ACTIVE</span>
-        </a>
-        <button type="button" class="nav-tab" data-tab="dashboard">Runs Dashboard</button>
-        <button type="button" class="nav-tab" data-tab="assumptions">Assumptions Log</button>
+        <a href="/" class="nav-tab">Company Research</a>
+        <a href="/recipient" class="nav-tab">Role-Based Outreach</a>
+        <a href="/tier3" class="nav-tab active">Person-First Outreach</a>
+        <button type="button" class="nav-tab" data-tab="dashboard">Run History</button>
+        <button type="button" class="nav-tab" data-tab="assumptions">Design Rationale</button>
       </nav>
     </div>
     <div class="header-right">
@@ -48,7 +45,7 @@
       <div class="card launch-card">
         <div class="launch-header">
           <div>
-            <h2>Person-First Outreach Synthesis (Tier 3)</h2>
+            <h2>Start with a person</h2>
             <p class="subtext" style="color: #94A3B8; font-size: 0.88rem; margin-top: 4px;">
               Provide only a person's name. S0 automatically resolves their employer and role, feeds S1 company verification, filters problems by owner function, and tailors the outreach draft.
             </p>
@@ -100,21 +97,6 @@
             </div>
           </details>
 
-          <!-- Tier 2: Collapsible Add Context Panel -->
-          <details class="context-accordion" id="context-accordion">
-            <summary>📎 Add Prospect Context Snippets (Tier 2 Optional Pasted Excerpts)</summary>
-            <div class="context-panel-body">
-              <div class="context-warning-banner">
-                <span class="warning-icon">🛡️</span>
-                <span><strong>Public, Professional Material Only:</strong> Paste up to 3 snippets (LinkedIn bio, recent post, interview quote, or notes). Text is never scraped or fetched. Do not paste private contact details or sensitive personal life content.</span>
-              </div>
-              <div id="snippets-container" class="snippets-container"></div>
-              <div class="snippets-actions" style="margin-top: 10px; display: flex; gap: 10px;">
-                <button type="button" class="btn btn-secondary btn-sm" id="add-snippet-btn" onclick="addSnippetRow()">+ Add Snippet (Up to 3)</button>
-                <button type="button" class="chip" onclick="fillSampleContext()">Load Sample Snippet (LinkedIn Post)</button>
-              </div>
-            </div>
-          </details>
         </form>
       </div>
 
@@ -550,6 +532,6 @@
   </main>
 
 <script src="/static/demo-access.js"></script>
-<script src="/static/app.js?v=13"></script>
+<script src="/static/app.js?v=14"></script>
 </body>
 </html>

@@ -52,70 +52,6 @@ function fillPersonInput(name, comp, city) {
   }
 }
 
-// Tier 2: Dynamic Context Snippet Row Management
-let snippetCounter = 0;
-function addSnippetRow(label = 'LinkedIn bio', text = '', url = '', date = '') {
-  const container = document.getElementById('snippets-container');
-  if (!container) return;
-  const currentCount = container.querySelectorAll('.snippet-card').length;
-  if (currentCount >= 3) {
-    alert('Maximum of 3 snippets allowed per run.');
-    return;
-  }
-
-  snippetCounter++;
-  const sId = `snippet-${snippetCounter}`;
-  const card = document.createElement('div');
-  card.className = 'snippet-card';
-  card.id = sId;
-
-  card.innerHTML = `
-    <div class="snippet-card-header">
-      <select class="snippet-label" style="flex: 1.2;">
-        <option value="LinkedIn bio" ${label === 'LinkedIn bio' ? 'selected' : ''}>LinkedIn Bio</option>
-        <option value="Recent post" ${label === 'Recent post' ? 'selected' : ''}>Recent Post</option>
-        <option value="Interview quote" ${label === 'Interview quote' ? 'selected' : ''}>Interview Quote</option>
-        <option value="Executive notes" ${label === 'Executive notes' ? 'selected' : ''}>Executive Notes</option>
-      </select>
-      <input type="text" class="snippet-url" placeholder="Source URL (Optional)" value="${escapeHtml(url)}" style="flex: 2;" />
-      <input type="text" class="snippet-date" placeholder="Date (Optional)" value="${escapeHtml(date)}" style="flex: 1;" />
-      <button type="button" class="btn btn-secondary btn-sm" onclick="removeSnippetRow('${sId}')" style="padding: 2px 8px; color: #F87171;">✕</button>
-    </div>
-    <div class="snippet-textarea-wrapper">
-      <textarea class="snippet-text" maxlength="2000" placeholder="Paste professional public excerpt (up to 2,000 characters)..." oninput="updateSnippetCount('${sId}')">${escapeHtml(text)}</textarea>
-      <div class="snippet-char-counter" id="counter-${sId}">${text.length} / 2000 chars</div>
-    </div>
-  `;
-
-  container.appendChild(card);
-}
-
-function removeSnippetRow(sId) {
-  const el = document.getElementById(sId);
-  if (el) el.remove();
-}
-
-function updateSnippetCount(sId) {
-  const el = document.getElementById(sId);
-  if (!el) return;
-  const txt = el.querySelector('.snippet-text').value;
-  const counter = document.getElementById(`counter-${sId}`);
-  if (counter) counter.textContent = `${txt.length} / 2000 chars`;
-}
-
-function fillSampleContext() {
-  const container = document.getElementById('snippets-container');
-  if (container) container.innerHTML = '';
-  addSnippetRow(
-    'Recent post',
-    'We are scaling our finance operations rapidly this quarter. Our AP and billing teams are currently processing over 15,000 invoices monthly across 4 currencies, and invoice reconciliation bottlenecks have become our #1 operational priority to solve before year end.',
-    'https://linkedin.com/in/sample-exec/recent-activity',
-    '2026-10-15'
-  );
-  const acc = document.getElementById('context-accordion');
-  if (acc) acc.open = true;
-}
-
 // Preflight Check on load
 async function checkPreflight() {
   const el = document.getElementById('preflight-status');
@@ -192,18 +128,6 @@ if (launchFormEl) {
     const companyName = companyNameEl ? companyNameEl.value.trim() : (personName ? `Prospect: ${personName}` : '');
     if (!companyName && !personName) return;
 
-    // Collect Tier 2 snippets
-    const snippets = [];
-    document.querySelectorAll('.snippet-card').forEach(card => {
-      const lbl = card.querySelector('.snippet-label').value;
-      const txt = card.querySelector('.snippet-text').value.trim();
-      const url = card.querySelector('.snippet-url').value.trim() || null;
-      const dt = card.querySelector('.snippet-date').value.trim() || null;
-      if (txt) {
-        snippets.push({ label: lbl, text: txt, source_url: url, provided_date: dt });
-      }
-    });
-
     const payload = {
       person_name: personName,
       company_name: companyName,
@@ -216,7 +140,6 @@ if (launchFormEl) {
       industry_hint: document.getElementById('industry_hint') ? document.getElementById('industry_hint').value.trim() || null : null,
       recipient_name: document.getElementById('recipient_name') ? document.getElementById('recipient_name').value.trim() || null : null,
       recipient_role: document.getElementById('recipient_role') ? document.getElementById('recipient_role').value.trim() || null : null,
-      context: snippets.length > 0 ? snippets : null,
       mode: 'fast'
     };
 
@@ -730,7 +653,7 @@ function renderHypotheses(hypotheses, activeHypId = null) {
       ? `<span class="hyp-category-badge category-direct" title="Explicitly mentioned in user reviews, Reddit, or company announcements">🎯 DIRECT / STATED</span>`
       : `<span class="hyp-category-badge category-inferred" title="Inferred operational risk deduced from trajectory and scaling facts">💡 INFERRED / ASSUMED</span>`;
 
-    // Tier 1 Role-Fit Badge
+    // Role-fit badge
     const roleBadge = h.role_fit_badge || (b && b.role_fit_badge) || 'broad';
     let roleBadgeHtml = '';
     if (roleBadge === 'primary') {
@@ -1535,7 +1458,7 @@ async function loadDashboard() {
 
     runs.forEach(r => {
       const tr = document.createElement('tr');
-      const roleText = r.recipient_title ? `${escapeHtml(r.recipient_title)} (${escapeHtml(r.recipient_lens || 'broad')})` : '<span style="color: #6B7280;">Tier 0</span>';
+      const roleText = r.recipient_title ? `${escapeHtml(r.recipient_title)} (${escapeHtml(r.recipient_lens || 'broad')})` : '<span style="color: #6B7280;">Company-level</span>';
       const fallbackBadge = r.fallback_banner_used ? '<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #F87171; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">⚠️ Fallback</span>' : '<span style="color: #6B7280;">-</span>';
 
       tr.innerHTML = `

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Zamp AI Solutions · Recipient Pipeline (Tier 1 & 2)</title>
+  <title>Zamp AI Solutions · Role-Based Outreach</title>
   <link rel="stylesheet" href="/static/style.css?v=8" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,19 +16,16 @@
       <div class="brand">
         <span class="brand-logo">⚡</span>
         <span class="brand-name">zamp</span>
-        <span class="badge-role">Recipient Personalisation · Tier 1 & 2</span>
+        <span class="badge-role">Personalized company research</span>
       </div>
     </div>
     <div class="header-center">
       <nav class="nav-tabs">
-        <a href="/" class="nav-tab">Company Pipeline (Tier 0)</a>
-        <a href="/recipient" class="nav-tab active">Recipient Pipeline (Tier 1 & 2)</a>
-        <a href="/tier3" class="nav-tab" style="position: relative;">
-          Person Pipeline (Tier 3)
-          <span style="display: inline-block; font-size: 0.65rem; background: #10B981; color: #fff; padding: 1px 5px; border-radius: 4px; margin-left: 4px; vertical-align: middle;">NEW</span>
-        </a>
-        <button type="button" class="nav-tab" data-tab="dashboard">Runs Dashboard</button>
-        <button type="button" class="nav-tab" data-tab="assumptions">Assumptions Log</button>
+        <a href="/" class="nav-tab">Company Research</a>
+        <a href="/recipient" class="nav-tab active">Role-Based Outreach</a>
+        <a href="/tier3" class="nav-tab">Person-First Outreach</a>
+        <button type="button" class="nav-tab" data-tab="dashboard">Run History</button>
+        <button type="button" class="nav-tab" data-tab="assumptions">Design Rationale</button>
       </nav>
     </div>
     <div class="header-right">
@@ -47,8 +44,8 @@
       <!-- Launch Form Card -->
       <div class="card launch-card">
         <div class="launch-header">
-          <h2>Initiate Recipient-Personalised Outreach Synthesis</h2>
-          <span class="target-latency-badge">Tier 1 Role Lens &amp; Tier 2 Context</span>
+          <h2>Tailor outreach to a decision-maker</h2>
+          <span class="target-latency-badge">Role-informed research</span>
         </div>
         <form id="launch-form" class="launch-form">
           <div class="input-row main-input-row">
@@ -99,34 +96,16 @@
           </div>
           
           <div class="tier-inputs-hint">
-            <span>💡 <em>Role &amp; name are optional lens inputs. If left empty, system runs pure Tier 0 company-level synthesis.</em></span>
+            <span>💡 <em>Role and name are optional. Leave them blank to run company-level research.</em></span>
           </div>
 
           <div class="quick-chips">
             <span class="chip-label">Quick Test Candidates:</span>
-            <button type="button" class="chip" onclick="fillInput('Ramp', 'https://ramp.com', 'CFO', 'Alex')">Ramp (CFO Tier 1)</button>
-            <button type="button" class="chip" onclick="fillInput('Ramp', 'https://ramp.com', 'Head of Support', 'Sarah')">Ramp (Support Tier 1)</button>
+            <button type="button" class="chip" onclick="fillInput('Ramp', 'https://ramp.com', 'CFO', 'Alex')">Ramp · Finance leader</button>
+            <button type="button" class="chip" onclick="fillInput('Ramp', 'https://ramp.com', 'Head of Support', 'Sarah')">Ramp · Support leader</button>
             <button type="button" class="chip" onclick="fillInput('Mercury', '', '', '')">Mercury (Ambiguous Gate)</button>
-            <button type="button" class="chip" onclick="fillInput('Brex', 'https://brex.com', 'General Counsel', 'David')">Brex (Legal Tier 1)</button>
+            <button type="button" class="chip" onclick="fillInput('Brex', 'https://brex.com', 'General Counsel', 'David')">Brex · Legal leader</button>
           </div>
-
-          <!-- Tier 2: Collapsible Add Context Panel -->
-          <details class="context-accordion" id="context-accordion">
-            <summary>📎 Add Recipient or Company Context (Tier 2 Optional Pasted Snippets)</summary>
-            <div class="context-panel-body">
-              <div class="context-warning-banner">
-                <span class="warning-icon">🛡️</span>
-                <span><strong>Public, Professional Material Only:</strong> Paste up to 3 snippets (LinkedIn bio, recent post, interview quote, or notes). Text is never scraped or fetched. Do not paste private contact details or sensitive personal life content.</span>
-              </div>
-              <div id="snippets-container" class="snippets-container">
-                <!-- Injected via JavaScript (1 to 3 snippets) -->
-              </div>
-              <div class="snippets-actions" style="margin-top: 10px; display: flex; gap: 10px;">
-                <button type="button" class="btn btn-secondary btn-sm" id="add-snippet-btn" onclick="addSnippetRow()">+ Add Snippet (Up to 3)</button>
-                <button type="button" class="chip" onclick="fillSampleContext()">Load Sample Snippet (LinkedIn Post)</button>
-              </div>
-            </div>
-          </details>
 
           <details class="hints-accordion">
             <summary>Disambiguation Hints (Optional)</summary>
@@ -245,7 +224,7 @@
 
         <!-- S1.5 Confirmed Company Profile Card -->
         <div id="company-profile-card" class="card profile-card hidden">
-          <!-- Tier 1 Role Identity Bar -->
+          <!-- Role identity bar -->
           <div class="role-chip-container" id="role-chip-container" style="display: none; margin-bottom: 12px; padding: 8px 12px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
               <span class="role-chip-badge" style="background: #4F46E5; color: #FFF; font-weight: 600; font-size: 0.78rem; padding: 3px 8px; border-radius: 6px;">👤 <span id="role-display-name">Recipient</span> (<span id="role-display-title">Role</span>)</span>
@@ -507,6 +486,6 @@
   </main>
 
 <script src="/static/demo-access.js"></script>
-<script src="/static/app.js?v=13"></script>
+<script src="/static/app.js?v=14"></script>
 </body>
 </html>
