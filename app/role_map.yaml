@@ -1,0 +1,266 @@
+# Function Taxonomy and Role Pain Category Mapping
+# Used for deterministic role filtering in S3 and role-fit multipliers in S4
+
+functions:
+  Executive/GM:
+    label: "Executive & General Management"
+    seniorities: ["C-level", "VP/Head", "Founder"]
+    adjacent_functions: ["Operations", "Finance/Accounting", "Sales/Growth/Marketing", "Product"]
+    keywords:
+      - ceo
+      - president
+      - founder
+      - co-founder
+      - founder & ceo
+      - co-founder & ceo
+      - chief of staff
+      - managing director
+      - gm
+      - general manager
+      - chief executive
+      - partner
+      - executive director
+    cares_about: "Enterprise growth, operational margins, scaling strain, hiring-velocity bottlenecks, cross-functional leverage"
+    pain_categories:
+      - "scaling strain"
+      - "margin pressure"
+      - "hiring-velocity bottlenecks"
+      - "cross-functional friction"
+      - "operational efficiency"
+
+  Operations:
+    label: "Operations & Business Systems"
+    seniorities: ["C-level", "VP/Head", "Director", "Manager", "IC"]
+    adjacent_functions: ["Customer Support/CX", "Supply Chain/Logistics", "Finance/Accounting", "Executive/GM"]
+    keywords:
+      - coo
+      - chief operating officer
+      - vp operations
+      - head of operations
+      - operations director
+      - director of operations
+      - operations manager
+      - business operations
+      - bizops
+      - strategy & operations
+      - operational excellence
+    cares_about: "Cycle times, exception handling, manual bottlenecks, human review overhead, process throughput"
+    pain_categories:
+      - "manual workflow bottlenecks"
+      - "exception handling overhead"
+      - "review queue backlogs"
+      - "multi-system reconciliation"
+      - "operational latency"
+
+  Customer Support/CX:
+    label: "Customer Support & Customer Experience"
+    seniorities: ["VP/Head", "Director", "Manager", "IC"]
+    adjacent_functions: ["Operations", "Product", "Sales/Growth/Marketing"]
+    keywords:
+      - head of support
+      - vp customer support
+      - customer support director
+      - support manager
+      - cx lead
+      - vp customer experience
+      - head of cx
+      - director customer success
+      - client services
+      - customer care
+    cares_about: "Ticket backlog, first-contact resolution, CSAT/NPS, refund dispute delays, agent burnout"
+    pain_categories:
+      - "support triage bottlenecks"
+      - "ticket backlog surges"
+      - "refund/dispute handling latency"
+      - "review-visible friction"
+      - "repetitive inquiry load"
+
+  Finance/Accounting:
+    label: "Finance, Accounting & Treasury"
+    seniorities: ["C-level", "VP/Head", "Director", "Manager", "IC"]
+    adjacent_functions: ["Operations", "Compliance/Legal", "Executive/GM"]
+    keywords:
+      - cfo
+      - chief financial officer
+      - vp finance
+      - finance director
+      - controller
+      - comptroller
+      - head of accounting
+      - head of ap
+      - head of ar
+      - billing controller
+      - director of financial operations
+      - treasury
+    cares_about: "Invoicing delays, collections, cash flow predictability, audit compliance, month-end close cycle"
+    pain_categories:
+      - "invoicing delays and leakage"
+      - "reconciliation discrepancies"
+      - "collections and DSO drag"
+      - "month-end close overhead"
+      - "manual billing exceptions"
+
+  Supply Chain/Logistics:
+    label: "Supply Chain, Fulfillment & Logistics"
+    seniorities: ["VP/Head", "Director", "Manager", "IC"]
+    adjacent_functions: ["Operations", "Finance/Accounting"]
+    keywords:
+      - head of supply chain
+      - vp supply chain
+      - director of logistics
+      - fulfillment director
+      - logistics manager
+      - warehouse operations
+      - dispatch manager
+      - inventory controller
+      - distribution director
+      - merchandiser
+      - merchandising
+      - export merchandiser
+      - production merchandiser
+      - garment merchandiser
+      - procurement specialist
+      - sourcing manager
+    cares_about: "On-time delivery, fulfillment SLA, vendor document errors, warehouse bottlenecks, carrier dispute handling"
+    pain_categories:
+      - "fulfillment delay surges"
+      - "dispatch and routing exceptions"
+      - "vendor document mismatches"
+      - "warehouse scheduling bottlenecks"
+      - "carrier reconciliation disputes"
+
+  Engineering/IT:
+    label: "Engineering, IT & Security"
+    seniorities: ["C-level", "VP/Head", "Director", "Manager", "IC"]
+    adjacent_functions: ["Product", "Operations"]
+    keywords:
+      - cto
+      - chief technology officer
+      - cio
+      - chief information officer
+      - vp engineering
+      - head of engineering
+      - director of it
+      - it operations manager
+      - systems architect
+      - platform engineering
+    cares_about: "Integration complexity, incident MTTR, technical debt, security/access hygiene, legacy migration overhead"
+    pain_categories:
+      - "integration maintenance drag"
+      - "incident response load"
+      - "migration and legacy system toil"
+      - "identity and access sprawl"
+      - "pipeline build/deploy friction"
+
+  Product:
+    label: "Product Management & Design"
+    seniorities: ["C-level", "VP/Head", "Director", "Manager", "IC"]
+    adjacent_functions: ["Engineering/IT", "Customer Support/CX", "Sales/Growth/Marketing"]
+    keywords:
+      - cpo
+      - chief product officer
+      - vp product
+      - head of product
+      - product director
+      - group product manager
+      - lead product manager
+      - head of design
+      - product led growth
+      - plg
+      - founding product led growth
+      - founding product
+      - product lead
+      - growth product manager
+    cares_about: "Feature delivery velocity, user friction, conversion drop-offs, feedback loop latency, onboarding drop-off"
+    pain_categories:
+      - "spec handoff and alignment gaps"
+      - "user feedback synthesis backlog"
+      - "feature request prioritization friction"
+      - "onboarding funnel drop-off"
+      - "feature adoption stagnation"
+
+  Sales/Growth/Marketing:
+    label: "Sales, Revenue Operations & Growth"
+    seniorities: ["C-level", "VP/Head", "Director", "Manager", "IC"]
+    adjacent_functions: ["Customer Support/CX", "Operations", "Executive/GM"]
+    keywords:
+      - cro
+      - chief revenue officer
+      - vp sales
+      - head of revops
+      - revenue operations director
+      - vp marketing
+      - head of growth
+      - business development director
+      - commercial director
+    cares_about: "Lead response time, sales velocity, quote turnaround, CRM data hygiene, pipeline conversion"
+    pain_categories:
+      - "lead routing and response latency"
+      - "contract and quote turnaround friction"
+      - "CRM data hygiene and tracking drag"
+      - "pipeline leakage and visibility gaps"
+      - "inconsistent sales enablement handoffs"
+
+  HR/People:
+    label: "People, Talent & HR Operations"
+    seniorities: ["C-level", "VP/Head", "Director", "Manager", "IC"]
+    adjacent_functions: ["Operations", "Compliance/Legal", "Executive/GM"]
+    keywords:
+      - chro
+      - chief people officer
+      - vp people
+      - head of hr
+      - head of talent
+      - people operations director
+      - talent acquisition director
+      - hr operations manager
+    cares_about: "Onboarding cycle times, hiring velocity, contractor compliance, verification backlog, retention"
+    pain_categories:
+      - "onboarding verification cycle times"
+      - "contractor and vendor compliance backlog"
+      - "candidate screening bottlenecks"
+      - "payroll exception review delays"
+      - "employee records documentation overhead"
+
+  Compliance/Legal:
+    label: "Legal, Risk & Compliance"
+    seniorities: ["C-level", "VP/Head", "Director", "Manager", "IC"]
+    adjacent_functions: ["Finance/Accounting", "Operations", "Executive/GM"]
+    keywords:
+      - general counsel
+      - chief legal officer
+      - chief compliance officer
+      - mlro
+      - head of risk
+      - head of compliance
+      - legal director
+      - regulatory affairs director
+      - contract manager
+    cares_about: "Regulatory audit exposure, contract turnaround time, KYC/AML review queues, policy enforcement gaps"
+    pain_categories:
+      - "regulatory audit documentation prep"
+      - "KYC/AML verification backlog"
+      - "contract review turnaround delays"
+      - "cross-border compliance tracking"
+      - "manual policy exception handling"
+
+# Seniority Taxonomy
+seniority_levels:
+  c_level:
+    label: "C-level"
+    keywords: ["chief", "cfo", "cto", "ceo", "coo", "cro", "cpo", "chro", "cmo", "cio", "founder", "co-founder", "president", "managing director"]
+  vp_head:
+    label: "VP/Head"
+    keywords: ["vp", "vice president", "head of", "head", "senior vice president", "svp", "evp"]
+  director:
+    label: "Director"
+    keywords: ["director", "controller", "comptroller", "lead", "principal", "practice lead", "founding"]
+  manager:
+    label: "Manager"
+    keywords: ["manager", "supervisor", "team lead"]
+  ic:
+    label: "IC"
+    keywords: ["specialist", "analyst", "engineer", "coordinator", "associate", "consultant", "merchandiser"]
+  student:
+    label: "Student"
+    keywords: ["student", "intern", "trainee", "apprentice", "resident", "fellow", "scholar", "undergraduate", "postgraduate"]
