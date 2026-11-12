@@ -63,6 +63,12 @@ The engine executes an 8-stage state machine designed to eliminate wrong-company
 For the exhaustive engineering specification, design rationale behind every single stage, rate-limit resilience mechanisms, and bug post-mortems, see:
 👉 **[DOCUMENTATION.md](./DOCUMENTATION.md)**
 
+## Deploy for a Submission Demo
+
+This repository includes a Render Blueprint in `render.yaml`. Create a Blueprint from this repository and branch `main`, then set `DEMO_ACCESS_CODE`, `GROQ_API_KEY`, `GEMINI_API_KEY`, and `TAVILY_API_KEY` as secret environment variables in Render. Use a strong access code of at least 20 characters and share it with reviewers separately from the public URL. The app prompts for the code and protects its API with an HTTP-only session cookie.
+
+The Blueprint uses Render's free web service in Singapore. Free services spin down after 15 minutes without traffic, and their filesystem is ephemeral; SQLite run history can reset after a restart. This setup is intended for a submission demo, not production storage.
+
 ---
 
 ## 🛠 Directory Structure
