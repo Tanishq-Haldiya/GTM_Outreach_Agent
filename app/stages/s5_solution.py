@@ -46,7 +46,7 @@ async def design_solution(
     try:
         res = await call_llm(prompt, system_prompt=S5_SOLUTION_SYSTEM, task_type="fast", json_mode=True)
         if isinstance(res, dict):
-            return SolutionSketch(
+            solution = SolutionSketch(
                 id=f"sol_{uuid.uuid4().hex[:8]}",
                 hypothesis_id=hypothesis.id,
                 process_name=res.get("process_name", "Automated Operational Workflow"),
@@ -58,19 +58,26 @@ async def design_solution(
                 impact_direction=res.get("impact_direction", "Eliminates multi-day processing queues to under 2 minutes"),
                 buyer_credibility_hook=res.get("buyer_credibility_hook", "Targets proven manual friction points")
             )
+            return solution
     except Exception as e:
         logger.warning(f"S5 solution design error: {e}")
 
-    # Fallback
+    # Generic fallback stays anchored to the selected problem when providers fail.
+    process_label = (hypothesis.lens or "operational").replace("_", " ").strip().title()
+    problem = hypothesis.problem.rstrip(" .")
     return SolutionSketch(
         id=f"sol_{uuid.uuid4().hex[:8]}",
         hypothesis_id=hypothesis.id,
-        process_name="Intelligent Document & Ops Orchestration",
-        what_it_automates=f"Manual exception handling and verification for {hypothesis.lens}",
-        input_consumed="Inbound requests, PDFs, and discrepancy queues",
-        key_steps=["Multi-format ingestion", "Entity extraction & policy reconciliation", "ERP sync"],
-        human_checkpoints=["Low-confidence validation", "Out-of-policy approval"],
-        systems_touched=["Core ERP", "Document Management", "Notification Bus"],
-        impact_direction="Compresses operational cycle time from days to minutes",
-        buyer_credibility_hook="Directly resolves document-heavy manual review overhead"
+        process_name=f"{process_label} exception workflow",
+        what_it_automates=f"A structured workflow for handling {problem}, checking cases against the relevant criteria, and preparing clear next steps for review.",
+        input_consumed=f"Case details and supporting information relevant to: {problem}",
+        key_steps=[
+            "Capture the case details described in the selected problem",
+            "Check the available information against the applicable criteria and flag exceptions",
+            "Route uncertain cases for human review with a clear next step",
+        ],
+        human_checkpoints=["Unclear or incomplete information", "Cases requiring policy or business judgment"],
+        systems_touched=["Existing intake channel", "Case management system", "Relevant source of record"],
+        impact_direction="More consistent handling of the selected workflow while keeping decisions with the team",
+        buyer_credibility_hook=f"Designed around the selected problem: {problem}"
     )

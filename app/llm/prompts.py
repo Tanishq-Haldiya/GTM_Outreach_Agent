@@ -179,6 +179,8 @@ Rules:
 1. Do NOT invent fake customer statistics (e.g. never say "We saved Acme 42% on Day 1").
 2. Clearly describe what input is ingested, how AI + human checkpoints process it, and what systems are touched.
 3. Align the architecture and buyer credibility hook with the recipient's function lens and seniority.
+4. Every step and capability must directly address the Selected Operational Problem. Do not pivot to an unrelated generic workflow.
+5. Reuse the specific workflow and issue terms from the supporting evidence; do not replace them with a different operational problem.
 
 Output strictly in JSON:
 {{
@@ -224,7 +226,9 @@ _S6_SHARED_RULES = """STRICT DRAFTING RULES (BOTH MODES):
    - If no person-level context is provided or it is too thin, make ZERO person-level claims.
 7. No claims about the recipient's internal emotional state (e.g. never say "I know you're stressed" or "you must feel overwhelmed").
 8. Absolutely NO invented metrics or made-up percentages. Numbers ONLY from cited evidence.
+8a. Paraphrase evidence in natural language; do NOT copy/paste source excerpts, tracker output, or analytics strings into outreach. Avoid exact numbers by default. If growth data is a string of period-by-period counts or percentages, summarize it qualitatively (e.g., "the team has grown quickly") and omit the raw figures.
 9. Inferred problems only framed as hypotheses or questions, never stated as confirmed facts.
+9a. Problem-to-draft alignment is mandatory: the opening, proposed workflow, and CTA must address the selected problem and its cited evidence. Do not substitute an unrelated generic pitch or introduce unsupported systems, tools, workflows, or claims.
 10. NEVER mention expired seasonal holidays like 'New Year' or 'Christmas' in the email body or subject line; frame streak rewards or contests as recurring 'milestone streaks' or 'reward challenges'.
 11. Capability-first: Introduce the solution purely through capability (e.g., "We build automated workflow systems that..." or "We help teams automate..."). Do NOT invent or mention a vendor company brand name.
 12. Tone: Peer-to-peer, respectful, zero hype, no buzzwords ("revolutionary", "game-changing", "streamline your operations").
@@ -320,7 +324,7 @@ S6_DRAFT_USER_TEMPLATE_INFERRED = RobustPromptTemplate(
     "We specialize in: {seller_offering} ({seller_value_prop})\n"
     "Sign-off Name: {sender_name}\n\n"
     "INFERRED DRAFT INSTRUCTIONS:\n"
-    "- Open with the OBSERVABLE SIGNAL as an assertable fact — this is what you actually saw. E.g., \"Saw that [Company] recently [observable fact from signal]...\"\n"
+    "- Open with the OBSERVABLE SIGNAL paraphrased naturally. Never quote or paste the source excerpt. For growth analytics, say the team has grown recently/quickly; omit dashboard-style counts and period deltas.\n"
     "- Bridge to the inferred friction using a \"as X scales/grows, Y often emerges\" pattern. E.g., \"As volume grows, [specific operational process] can quietly become a bottleneck...\"\n"
     "- ONE sentence connecting the operational friction to what this role ({recipient_title}) cares about.\n"
     "- Present the inferred problem as a HYPOTHESIS or QUESTION — never assert it as confirmed. E.g., \"...wondering if that's something your team is navigating.\"\n"
@@ -346,6 +350,7 @@ Cited Evidence Items:
 Tasks:
 1. Swap-the-name Test: If you replace "{company_name}" with a random competitor and the email still makes complete sense, it FAILS (it's too generic).
 2. Grounding Check: Does every assertion or metric actually exist in the cited evidence?
+   - Never reproduce raw tracker/analytics strings or lists of period-by-period growth figures. Paraphrase a dense metric series qualitatively and omit exact numbers unless one concise figure is essential to the point.
 3. Person-Level Evidence Check (CRITICAL):
    - Any claim about the recipient (their bio, background, quotes, talks, or posts) MUST strictly be supported by a sender-provided item (source_type: "sdr_provided" or researcher: "sender_context").
    - A claim about the person can NEVER be supported by company-level evidence.

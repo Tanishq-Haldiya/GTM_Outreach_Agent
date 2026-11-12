@@ -7,16 +7,61 @@ from app.config import DEFAULT_SELLER_CAPABILITY
 from app.llm.router import call_llm
 from app.llm.prompts import S6_DRAFT_SYSTEM, S6_DRAFT_USER_TEMPLATE_DIRECT, S6_DRAFT_USER_TEMPLATE_INFERRED
 from app.stages.s2_research import _get_clean_company_name
+from app.stages.topic_alignment import matches_problem_topic
 
 logger = logging.getLogger(__name__)
 
+
+def _is_raw_metric_dump(text: str) -> bool:
+    """Identify scraped headcount/trajectory series that should not be quoted."""
+    numeric_values = re.findall(r"(?<!\w)[+-]?\d[\d,]*(?:\.\d+)?%?", text or "")
+    periods = re.findall(r"\b(?:yearly|annually|quarterly|monthly|weekly)\b", text or "", flags=re.IGNORECASE)
+    has_tracker_format = bool(re.search(r"\bnow\s*:\s*|[;|•·]", text or "", flags=re.IGNORECASE))
+    return len(numeric_values) >= 3 and len(periods) >= 2 and has_tracker_format
+
+
+def _naturalize_evidence_text(claim: str, excerpt: str) -> tuple[str, str]:
+    if _is_raw_metric_dump(claim) or _is_raw_metric_dump(excerpt):
+        summary = "Public workforce data indicates recent team growth."
+        return summary, summary
+    return claim, excerpt
+
+
+def _sanitize_raw_metric_copy(text: str, evidence: EvidenceItem) -> str:
+    if not (_is_raw_metric_dump(evidence.claim) or _is_raw_metric_dump(evidence.excerpt)):
+        return text
+    text = re.sub(
+        r'["“]?\s*Now:\s*[\d,]+[^"”\n]{0,320}["”]?',
+        "recent team growth",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r'["“][^"”\n]{0,320}(?:yearly|annually)[^"”\n]{0,320}(?:quarterly|monthly)[^"”\n]{0,160}["”]',
+        "recent team growth",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return text
+
+
+def _fallback_subject(lens: str) -> str:
+    subjects = {
+        "hr_ops": "Scaling hiring workflows",
+        "operations": "Scaling operations",
+        "finance_ops": "Scaling finance operations",
+        "compliance_kyc": "Compliance review workflow",
+        "customer_support": "Support workflow capacity",
+        "supply_chain_logistics": "Scaling supply operations",
+        "sales_ops": "Scaling sales operations",
+    }
+    return subjects.get((lens or "").lower(), "Scaling team workflows")
+
 def _build_observable_signal(hook_evidence: EvidenceItem, hypothesis: ProblemHypothesis) -> str:
     """
-    For inferred drafts, extract the observable trigger sentence from the hook evidence
-    rather than the full claim. The signal is what we CAN assert as fact.
-    Returns the best short phrase we can confidently state.
+    For inferred drafts, use a concise, natural-language signal rather than a raw excerpt.
     """
-    # Prefer the evidence excerpt (verbatim quote) as the observable signal
+    # The evidence has already been naturalized before it reaches this helper.
     signal = hook_evidence.excerpt.strip()
     if len(signal) > 200:
         # Truncate to first 200 chars at a sentence boundary
@@ -90,6 +135,8 @@ async def generate_draft(
         cleaned_claim = re.sub(pat, "milestone streak ", cleaned_claim, flags=re.IGNORECASE).strip()
         cleaned_excerpt = re.sub(pat, "milestone streak ", cleaned_excerpt, flags=re.IGNORECASE).strip()
 
+    cleaned_claim, cleaned_excerpt = _naturalize_evidence_text(cleaned_claim, cleaned_excerpt)
+
     hook_ev_text = f"Claim: '{cleaned_claim}' | Excerpt: '{cleaned_excerpt}' (Source: {hook_evidence.url})"
     solution_text = f"Process: {solution.process_name}. What it does: {solution.what_it_automates}. Impact: {solution.impact_direction}."
 
@@ -149,7 +196,13 @@ async def generate_draft(
             raw_alts = res.get("subject_alternatives", [])
             if not isinstance(raw_alts, list):
                 raw_alts = []
-            clean_alts = [a.strip() for a in raw_alts if isinstance(a, str) and a.strip() and a.strip().lower() != subj.lower()]
+            clean_alts = [
+                a.strip() for a in raw_alts
+                if isinstance(a, str)
+                and a.strip()
+                and a.strip().lower() != subj.lower()
+                and matches_problem_topic(hypothesis.problem, a)
+            ]
 
             # De-bias subject line if an expired seasonal tag leaked in
             seasonal_bad = ["new year", "new years", "holiday", "christmas", "black friday"]
@@ -174,6 +227,15 @@ async def generate_draft(
             ]:
                 body_text = re.sub(bad_pat, repl, body_text, flags=re.IGNORECASE).strip()
 
+            body_text = _sanitize_raw_metric_copy(body_text, hook_evidence)
+
+            linkedin_text = _sanitize_raw_metric_copy(
+                res.get("linkedin_note") or "", hook_evidence
+            ).strip()
+            if not matches_problem_topic(hypothesis.problem, body_text):
+                logger.warning("S6 copy drifted from the selected problem; using a problem-matched fallback.")
+                raise ValueError("Draft did not retain enough topic terms from the selected problem")
+
             # Clean out full legal entity name occurrences from conversational body text
             if company_name != clean_name and company_name in body_text:
                 body_text = body_text.replace(company_name, clean_name)
@@ -193,13 +255,16 @@ async def generate_draft(
                 "seniority": seniority_display
             }
 
+            linkedin_note = linkedin_text or _sanitize_raw_metric_copy(res.get("linkedin_note", f"Hi {greeting_name}, noticed your recent team growth at {clean_name}. Would love to connect!"), hook_evidence).strip()
+            why_this_hook = _sanitize_raw_metric_copy(res.get("why_this_hook", f"Grounded in verified signal: {cleaned_claim}"), hook_evidence).strip()
+
             return OutreachDraft(
                 id=f"draft_{uuid.uuid4().hex[:8]}",
                 subject=subj,
                 subject_alternatives=clean_alts,
                 body=body_text,
-                linkedin_note=res.get("linkedin_note", f"Hi {greeting_name}, noticed your recent team growth at {clean_name}. Would love to connect!").strip(),
-                why_this_hook=res.get("why_this_hook", f"Grounded in verified signal: {hook_evidence.claim}").strip(),
+                linkedin_note=linkedin_note,
+                why_this_hook=why_this_hook,
                 selected_hook_id=hook_evidence.id,
                 claim_map=claim_map,
                 version=1,
@@ -218,33 +283,33 @@ async def generate_draft(
         "seniority": seniority_display
     }
     if is_inferred:
+        fallback_signal = observable_signal.strip().rstrip(". ")
+        if len(fallback_signal) > 140:
+            fallback_signal = fallback_signal[:137].rsplit(" ", 1)[0] + "..."
         fallback_body = (
             f"Hi {greeting_name},\n\n"
-            f"Saw that {clean_name} recently noted: \"{hook_evidence.excerpt[:90]}...\"\n\n"
-            f"As volume at that scale grows, {hypothesis.problem.lower()} can quietly become a bottleneck — "
-            f"wondering if that's something your team is navigating.\n\n"
-            f"We build automated workflow systems that ingest raw incoming items, "
-            f"reconcile exceptions against policy, and update systems with human-in-the-loop checkpoints. "
+            f"I noticed a recent signal at {clean_name}: {fallback_signal}.\n\n"
+            f"As those operations scale, {hypothesis.problem.lower()} may become harder to manage. "
+            f"Is that an area your team is exploring?\n\n"
+            f"We build workflows that {solution.what_it_automates.rstrip('. ')} while keeping human reviewers involved in exceptions. "
             f"Worth a quick chat to explore if it's relevant?\n\n"
             f"Best,\n{sender_name}"
         )
     else:
+        problem_text = hypothesis.problem.rstrip(" .")
         fallback_body = (
             f"Hi {greeting_name},\n\n"
-            f"Saw that {clean_name} recently noted: \"{hook_evidence.excerpt[:90]}...\"\n\n"
-            f"With that, teams often face scaling bottlenecks around {hypothesis.problem.lower()}. "
-            f"We build automated workflow systems that ingest raw incoming items, "
-            f"reconcile exceptions against policy, and update systems with human-in-the-loop checkpoints.\n\n"
-            f"Open to comparing notes on how peer teams handle this?\n\n"
+            f"The signal points to a challenge with {problem_text.lower()}.\n\n"
+            f"We build workflows that {solution.what_it_automates.rstrip('. ')}. Would it be useful to compare how your team handles this today?\n\n"
             f"Best,\n{sender_name}"
         )
 
     return OutreachDraft(
         id=f"draft_{uuid.uuid4().hex[:8]}",
-        subject=f"{clean_name.lower()} operations / {hypothesis.lens.replace('_', ' ')}",
+        subject=_fallback_subject(hypothesis.lens),
         body=fallback_body,
-        linkedin_note=f"Hi {greeting_name}, following {clean_name}'s recent operational milestones. Would love to connect and share notes on workflow automation.",
-        why_this_hook=f"Triggered by {hook_evidence.title}: '{hook_evidence.claim}'",
+        linkedin_note=f"Hi {greeting_name}, I came across a signal related to {hypothesis.problem.rstrip(' .').lower()}. Would be glad to connect and compare notes on how teams handle it.",
+        why_this_hook=f"Triggered by {hook_evidence.title}: {cleaned_claim}",
         selected_hook_id=hook_evidence.id,
         claim_map={},
         version=1,
