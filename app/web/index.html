@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Zamp AI Solutions · Personalised GTM Outreach Pipeline</title>
-  <link rel="stylesheet" href="/static/style.css?v=8" />
+  <link rel="stylesheet" href="/static/style.css?v=10" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -21,11 +21,10 @@
     </div>
     <div class="header-center">
       <nav class="nav-tabs">
-        <a href="/" class="nav-tab active">Company Research</a>
-        <a href="/recipient" class="nav-tab">Role-Based Outreach</a>
-        <a href="/tier3" class="nav-tab">Person-First Outreach</a>
+        <button type="button" class="nav-tab active" data-tab="live-run">New Research</button>
         <button type="button" class="nav-tab" data-tab="dashboard">Run History</button>
         <button type="button" class="nav-tab" data-tab="assumptions">Design Rationale</button>
+        <a class="nav-tab" href="/static/agent-architecture.html" target="_blank" rel="noopener">Agent Map ↗</a>
       </nav>
     </div>
     <div class="header-right">
@@ -43,49 +42,129 @@
     <section id="tab-live-run" class="tab-pane active">
       <!-- Launch Form Card -->
       <div class="card launch-card">
-        <div class="launch-header">
-          <h2>Research a company and find a relevant opportunity</h2>
+        <div class="launch-header unified-launch-header">
+          <div>
+            <h2>Start with a company or a person</h2>
+            <p class="launch-intro">One workspace, three levels of personalization. Add only the details you have.</p>
+          </div>
           <span class="target-latency-badge">Target: &lt; 90s Execution</span>
         </div>
         <form id="launch-form" class="launch-form">
-          <div class="input-row main-input-row">
-            <div class="input-group flex-2">
-              <label for="company_name">Target Company Name *</label>
-              <input type="text" id="company_name" placeholder="e.g. Ramp, Brex, Gusto, or Mercury (ambiguous)" required autocomplete="off" />
+          <div class="input-row unified-input-row">
+            <div class="input-group">
+              <label for="company_name">Company <span class="field-optional">Optional with a person</span></label>
+              <input type="text" id="company_name" placeholder="e.g. Ramp or Brex" autocomplete="organization" />
+            </div>
+            <div class="input-group">
+              <label for="person_name">Person <span class="field-optional">Optional</span></label>
+              <input type="text" id="person_name" placeholder="e.g. Eric Glyman" autocomplete="name" />
+            </div>
+            <div class="input-group">
+              <label for="recipient_role">Role or title <span class="field-optional">Optional</span></label>
+              <input type="text" id="recipient_role" list="role-suggestions" placeholder="e.g. CFO or Head of Support" autocomplete="organization-title" />
+              <datalist id="role-suggestions">
+                <option value="CFO"></option>
+                <option value="VP Finance"></option>
+                <option value="Head of Support"></option>
+                <option value="Head of People"></option>
+                <option value="Head of Operations"></option>
+                <option value="COO"></option>
+                <option value="CEO"></option>
+              </datalist>
             </div>
             <div class="input-group-btn">
               <button type="submit" id="start-btn" class="btn btn-primary">
-                <span class="btn-icon">▶</span> Run Pipeline
+                <span class="btn-icon">&#9654;</span> Run Research
               </button>
             </div>
           </div>
 
+          <div class="mode-preview" aria-live="polite">
+            <span class="mode-preview-mark" aria-hidden="true">&#10022;</span>
+            <div class="mode-preview-copy">
+              <strong id="run-mode-title">Company-level research</strong>
+              <span id="run-mode-description">Add a company to find grounded operational opportunities. A role adds buyer-specific framing.</span>
+            </div>
+            <span id="run-mode-badge" class="mode-preview-badge">Company</span>
+          </div>
+          <p id="launch-form-feedback" class="form-feedback" role="alert"></p>
+
           <div class="quick-chips">
-            <span class="chip-label">Quick Test Candidates:</span>
-            <button type="button" class="chip" onclick="fillInput('Ramp', 'https://ramp.com')">Ramp (Happy Path)</button>
-            <button type="button" class="chip" onclick="fillInput('Mercury', '')">Mercury (Ambiguous Gate Test)</button>
-            <button type="button" class="chip" onclick="fillInput('Brex', 'https://brex.com')">Brex</button>
-            <button type="button" class="chip" onclick="fillInput('Apollo', '')">Apollo (Ambiguous Gate Test)</button>
+            <span class="chip-label">Try a starting point:</span>
+            <button type="button" class="chip" onclick="fillInput('Ramp', 'https://ramp.com')">Company · Ramp</button>
+            <button type="button" class="chip" onclick="fillInput('Ramp', 'https://ramp.com', 'CFO')">Role · Ramp CFO</button>
+            <button type="button" class="chip" onclick="fillPersonInput('Eric Glyman', 'Ramp', 'New York')">Person · Eric Glyman</button>
+            <button type="button" class="chip" onclick="fillInput('Mercury', '')">Ambiguous company</button>
           </div>
 
           <details class="hints-accordion">
-            <summary>Disambiguation Hints (Optional)</summary>
+            <summary>More identity hints (optional)</summary>
             <div class="hints-grid">
               <div class="input-group">
-                <label for="website_hint">Website Domain Hint</label>
+                <label for="website_hint">Website domain</label>
                 <input type="text" id="website_hint" placeholder="e.g. ramp.com" />
               </div>
               <div class="input-group">
-                <label for="industry_hint">Industry Hint</label>
+                <label for="industry_hint">Industry</label>
                 <input type="text" id="industry_hint" placeholder="e.g. Fintech / Corporate Cards" />
               </div>
               <div class="input-group">
-                <label for="country_hint">Country Hint</label>
+                <label for="country_hint">Country</label>
                 <input type="text" id="country_hint" placeholder="e.g. United States" />
+              </div>
+              <div class="input-group">
+                <label for="city_hint">City or location</label>
+                <input type="text" id="city_hint" placeholder="e.g. New York or San Francisco" />
+              </div>
+              <div class="input-group">
+                <label for="linkedin_hint">LinkedIn profile</label>
+                <input type="text" id="linkedin_hint" placeholder="e.g. linkedin.com/in/prospect" />
               </div>
             </div>
           </details>
         </form>
+      </div>
+
+      <!-- Person identity clarification, shown when the submitted name is ambiguous -->
+      <div id="s0-clarification-card" class="card clarification-card hidden" style="border-left: 4px solid #F59E0B;">
+        <div class="clarification-header">
+          <div class="clarify-alert-icon" aria-hidden="true">&#128100;</div>
+          <div style="flex: 1;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <h3>Confirm the right person</h3>
+              <span class="round-badge" style="background: rgba(245, 158, 11, 0.2); color: #FBBF24;">Confidence below 0.80</span>
+            </div>
+            <p>Several people may match this name. Choose the right profile, or add an employer or location to narrow the search.</p>
+            <div class="confidence-meter-container">
+              <div class="confidence-meter-track">
+                <div id="s0-confidence-meter-fill" class="confidence-meter-fill" style="width: 0%; background: #F59E0B;"></div>
+                <div class="confidence-threshold-marker" title="0.80 confirmation threshold"><span>0.80 Threshold</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 14px;">
+          <h4 style="font-size: 0.88rem; color: #9CA3AF; margin-bottom: 10px;">Possible profiles</h4>
+          <div class="candidates-container" id="s0-candidates-list"></div>
+        </div>
+
+        <div style="margin-top: 16px; padding: 12px; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 8px;">
+          <label for="s0-refine-input" style="font-size: 0.85rem; font-weight: 600; color: #FCD34D; display: block; margin-bottom: 6px;">Not listed? Add an employer or location</label>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <input type="text" id="s0-refine-input" placeholder="e.g. Ramp, New York" style="flex: 1; min-width: 180px; padding: 7px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(0,0,0,0.3); color: #FFF;" autocomplete="off" />
+            <button type="button" class="btn btn-primary" onclick="submitPersonRefinement()">Search again</button>
+          </div>
+        </div>
+
+        <details style="margin-top: 14px; padding-top: 10px; border-top: 1px dashed rgba(255, 255, 255, 0.1);">
+          <summary style="font-size: 0.82rem; color: #9CA3AF; cursor: pointer;">Enter the employer and role yourself</summary>
+          <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
+            <input type="text" id="s0-manual-company" placeholder="Company name" style="flex: 1; min-width: 160px; padding: 7px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(0,0,0,0.3); color: #FFF;" />
+            <input type="text" id="s0-manual-role" placeholder="Role or title" style="flex: 1; min-width: 160px; padding: 7px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(0,0,0,0.3); color: #FFF;" />
+            <button type="button" class="btn btn-secondary" onclick="submitManualPerson()">Continue with these details</button>
+          </div>
+        </details>
       </div>
 
       <!-- S1 Interactive Confirmation Card (Appears if confidence < 0.80) -->
@@ -421,6 +500,6 @@
   </main>
 
 <script src="/static/demo-access.js"></script>
-<script src="/static/app.js?v=14"></script>
+<script src="/static/app.js?v=16"></script>
 </body>
 </html>

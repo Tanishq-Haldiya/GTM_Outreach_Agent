@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#09111f" />
+  <title>GTM Outreach Agent System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root{color-scheme:dark;--bg:#09111f;--panel:#101b2b;--line:#25354b;--text:#eef5ff;--muted:#90a4bf;--cyan:#65d7e8;--mint:#44e0ad;--violet:#aa91ff;--amber:#ffc66e;--rose:#ff8794}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 45% -25%,#1e3b51 0,transparent 52%),var(--bg);color:var(--text);font-family:Manrope,system-ui,sans-serif;min-height:100vh}
+    .page{max-width:1440px;margin:auto;padding:32px clamp(18px,4vw,56px) 48px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;color:var(--muted);font-size:12px;letter-spacing:.12em;text-transform:uppercase}.brand{display:flex;gap:9px;align-items:center;color:var(--text);font-weight:800;letter-spacing:.02em}.brand i{width:10px;height:10px;border-radius:50%;background:var(--mint);box-shadow:0 0 18px #44e0ad88}.top a{color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:9px 12px;border-radius:9px;letter-spacing:0;text-transform:none}.top a:hover{color:var(--text);border-color:var(--cyan)}
+    h1{font-size:clamp(32px,5vw,58px);line-height:1.04;letter-spacing:-.055em;margin:42px 0 12px;max-width:850px}.intro{color:#afc0d5;max-width:720px;line-height:1.7;margin:0}.intro b{color:var(--text);font-weight:700}.legend{display:flex;flex-wrap:wrap;gap:10px;margin:25px 0 19px}.legend span{display:inline-flex;align-items:center;gap:7px;background:#101b2b;border:1px solid var(--line);border-radius:999px;padding:7px 11px;color:#b5c4d8;font-size:11px}.dot{width:7px;height:7px;border-radius:50%;background:var(--cyan)}.dot.research{background:var(--violet)}.dot.decision{background:var(--amber)}.dot.output{background:var(--mint)}
+    .map-shell{position:relative;overflow:hidden;border:1px solid #25364d;border-radius:20px;background:linear-gradient(150deg,#0f1b2aef,#0b1421f7);box-shadow:0 28px 90px #0005;padding:26px}.map-shell:before{content:"";position:absolute;inset:0;background-image:radial-gradient(#718ba51c 1px,transparent 1px);background-size:22px 22px;pointer-events:none;mask-image:linear-gradient(to bottom,black,transparent 95%)}
+    .lane-heads,.flow{display:grid;grid-template-columns:1fr 1.28fr 1fr 1fr;gap:14px;position:relative;z-index:1}.lane-heads{margin-bottom:13px}.lane{color:#748ba8;font:11px 'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;padding:0 4px 8px;border-bottom:1px solid #293a50}.lane em{font-style:normal;color:#c5d1df;margin-right:7px}.flow{align-items:stretch}.stack{display:flex;flex-direction:column;gap:12px;min-width:0}.node{position:relative;width:100%;text-align:left;color:var(--text);font:inherit;background:linear-gradient(145deg,#142236,#101b2a);border:1px solid #2a3c53;border-radius:13px;padding:15px 15px 14px;cursor:pointer;transition:transform .18s,border-color .18s,box-shadow .18s;min-height:96px;z-index:2}.node:hover,.node:focus-visible{transform:translateY(-2px);outline:0;border-color:var(--accent);box-shadow:0 10px 28px #0005,0 0 0 1px color-mix(in srgb,var(--accent) 30%,transparent)}.node.selected{border-color:var(--accent);background:linear-gradient(140deg,color-mix(in srgb,var(--accent) 12%,#142236),#101b2a);box-shadow:inset 3px 0 var(--accent)}.node .head{display:flex;justify-content:space-between;gap:8px;align-items:center}.code{font:11px 'DM Mono',monospace;color:var(--accent);letter-spacing:.06em}.status{font-size:9px;color:#8ba1ba;border:1px solid #2c3c51;border-radius:20px;padding:3px 7px;white-space:nowrap}.node strong{display:block;font-size:14px;margin:9px 0 3px;letter-spacing:-.02em}.node small{display:block;color:#92a6bf;font-size:11px;line-height:1.45}.person{--accent:var(--cyan)}.research-node{--accent:var(--violet)}.decision{--accent:var(--amber)}.output{--accent:var(--mint)}.human{--accent:var(--rose)}
+    @media(min-width:981px){.stack{position:relative}.stack:not(:last-child):after{content:"→";position:absolute;right:-15px;top:42px;z-index:3;color:#647c98;background:#0d1725;border:1px solid #293b51;border-radius:20px;padding:1px 3px;font-size:13px}}
+    .fanout{border:1px solid #332e53;border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:8px;background:#15172b80}.fanout-label{font:10px 'DM Mono',monospace;color:#b2a0ff;text-transform:uppercase;letter-spacing:.07em;padding:1px 3px 3px}.mini{display:flex;align-items:center;gap:9px;border:1px solid #302c4b;border-radius:9px;padding:8px 9px;color:#d7d2f7;font-size:11px;background:#1a1a30}.mini i{width:6px;height:6px;background:var(--violet);border-radius:50%;box-shadow:0 0 9px #aa91ff77}.merge{font:10px 'DM Mono',monospace;color:#8295ae;text-align:center;padding:2px 0}.down{display:flex;align-items:center;justify-content:center;color:#536b87;font-size:16px;line-height:10px;height:8px}.feedback{border:1px dashed #665a39;background:#241e14aa;color:#dfbf87;border-radius:10px;padding:11px;font-size:10px;line-height:1.45}
+    .detail{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;margin-top:17px;position:relative;z-index:1}.detail-card,.principles{border:1px solid var(--line);background:#101b2bdc;border-radius:14px;padding:19px 21px}.eyebrow{font:10px 'DM Mono',monospace;color:var(--mint);letter-spacing:.11em;text-transform:uppercase}.detail h2{font-size:21px;letter-spacing:-.04em;margin:8px 0}.detail p{color:#a6b8ce;font-size:13px;line-height:1.65;margin:0;max-width:800px}.detail .responsibility{display:inline-flex;margin-top:13px;padding:6px 9px;border-radius:7px;background:#17273a;color:#cad8e8;font-size:11px}.principles h3{font-size:12px;margin:0 0 12px}.principles ul{list-style:none;padding:0;margin:0;display:grid;gap:10px}.principles li{font-size:11px;line-height:1.5;color:#96abc3;display:flex;gap:8px}.principles li:before{content:"✓";color:var(--mint);font-weight:bold}.foot{display:flex;justify-content:space-between;gap:14px;margin-top:15px;color:#70859f;font:10px 'DM Mono',monospace}.flowline{position:absolute;left:0;right:0;top:50%;height:1px;background:linear-gradient(90deg,transparent,#294159,transparent);z-index:0}
+    @media(max-width:980px){.lane-heads,.flow{grid-template-columns:1fr 1fr}.lane-heads .lane:nth-child(n+3){display:none}.stack{margin-bottom:12px}.detail{grid-template-columns:1fr}.flow{gap:0 12px}}
+    @media(max-width:560px){.page{padding:22px 14px 34px}.top{align-items:flex-start}.top a{font-size:10px}.map-shell{padding:16px 12px}.lane-heads{display:none}.flow{grid-template-columns:1fr}.stack{margin:0 0 12px}.stack:after{display:none!important}.stack:before{content:attr(data-lane);font:10px 'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#8499b3;padding:7px 2px}.node{min-height:auto}.detail-card,.principles{padding:16px}.foot{flex-direction:column}}
+    @media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;scroll-behavior:auto!important}}
+  </style>
+</head>
+<body>
+<main class="page">
+  <div class="top"><div class="brand"><i></i> GTM Outreach Engine <span style="color:#748ba8;font-weight:500">/ SYSTEM MAP</span></div><a href="/">← Back to workspace</a></div>
+  <h1>From prospect signal<br/>to reviewed outreach.</h1>
+  <p class="intro">A <b>human-guided, evidence-grounded pipeline</b>. Agents research and propose; deterministic checks constrain the output; a person approves the final draft.</p>
+  <div class="legend"><span><i class="dot"></i> Identity</span><span><i class="dot research"></i> Research</span><span><i class="dot decision"></i> Selection &amp; guardrails</span><span><i class="dot output"></i> Drafting</span></div>
+  <section class="map-shell" aria-label="Interactive pipeline graph">
+    <div class="lane-heads"><div class="lane"><em>01</em> Resolve</div><div class="lane"><em>02</em> Research</div><div class="lane"><em>03</em> Decide</div><div class="lane"><em>04</em> Create &amp; review</div></div>
+    <div class="flowline"></div>
+    <div class="flow">
+      <div class="stack person" data-lane="01 · Resolve">
+        <button class="node person selected" data-stage="s0"><span class="head"><span class="code">S0 · OPTIONAL</span><span class="status">PERSON INPUT</span></span><strong>Person context</strong><small>Name and role add buyer-specific context to the run.</small></button>
+        <div class="down">↓</div>
+        <button class="node person" data-stage="s1"><span class="head"><span class="code">S1</span><span class="status">CLARIFY IF NEEDED</span></span><strong>Resolve the company</strong><small>Match the intended business and ask for clarification when identity is uncertain.</small></button>
+      </div>
+      <div class="stack research-node" data-lane="02 · Research">
+        <button class="node research-node" data-stage="s2"><span class="head"><span class="code">S2</span><span class="status">PARALLEL RESEARCH</span></span><strong>Build an evidence base</strong><small>Profile the company, then research independent source types in parallel.</small></button>
+        <div class="fanout" aria-label="Research channels"><div class="fanout-label">Research channels · parallel</div><div class="mini"><i></i> Official company sources</div><div class="mini"><i></i> Hiring &amp; growth signals</div><div class="mini"><i></i> Customer voice &amp; reviews</div><div class="mini"><i></i> News, products &amp; systems</div><div class="merge">Evidence is collected and normalized ↓</div></div>
+      </div>
+      <div class="stack decision" data-lane="03 · Decide">
+        <button class="node decision" data-stage="s3"><span class="head"><span class="code">S3</span><span class="status">DIRECT + INFERRED</span></span><strong>Discover problems</strong><small>Separate reported friction from hypotheses inferred from observable signals.</small></button>
+        <div class="down">↓</div>
+        <button class="node decision" data-stage="s4"><span class="head"><span class="code">S4</span><span class="status">RANK &amp; SELECT</span></span><strong>Choose an opportunity</strong><small>Score evidence, impact, timing, automation fit and recipient relevance.</small></button>
+        <div class="feedback">Evidence is the boundary: unsupported hypotheses are held for review or removed.</div>
+      </div>
+      <div class="stack output" data-lane="04 · Create & review">
+        <button class="node output" data-stage="s5"><span class="head"><span class="code">S5</span><span class="status">DESIGN</span></span><strong>Shape the solution</strong><small>Design the workflow around the selected problem and available capability.</small></button>
+        <div class="down">↓</div>
+        <button class="node output" data-stage="s6"><span class="head"><span class="code">S6</span><span class="status">DRAFT</span></span><strong>Write the outreach</strong><small>Generate email and connection copy tied to the selected problem.</small></button>
+        <div class="down">↓</div>
+        <button class="node decision" data-stage="s7"><span class="head"><span class="code">S7</span><span class="status">CHECK</span></span><strong>Grounding review</strong><small>Check claims against cited evidence and flag copy for human inspection.</small></button>
+        <div class="down">↓</div>
+        <button class="node human" data-stage="s8"><span class="head"><span class="code">S8 · HUMAN</span><span class="status">NO AUTO-SEND</span></span><strong>Review &amp; decide</strong><small>Edit, approve, or reject. The system never sends outreach automatically.</small></button>
+      </div>
+    </div>
+    <div class="detail" aria-live="polite"><div class="detail-card"><div class="eyebrow" id="detail-code">S0 · Optional input</div><h2 id="detail-title">Person context</h2><p id="detail-copy">Start with a company, person, or both. A person and role enrich the buyer context; they do not replace company verification.</p><span class="responsibility" id="detail-owner">Human input · optional</span></div><aside class="principles"><h3>Design principles</h3><ul><li>Evidence accompanies the problem</li><li>Inferred friction stays labeled as a hypothesis</li><li>Draft claims are checked before review</li><li>Human approval stays in control</li></ul></aside></div>
+  </section>
+  <div class="foot"><span>SELECT A NODE TO INSPECT ITS ROLE</span><span>RESEARCH → EVIDENCE → PROBLEM → DRAFT → HUMAN REVIEW</span></div>
+</main>
+<script>
+const stages={
+ s0:{code:'S0 · Optional input',title:'Person context',owner:'Human input · optional',copy:'Start with a company, person, or both. A person and role enrich the buyer context; they do not replace company verification.'},
+ s1:{code:'S1 · Entity resolution',title:'Resolve the company',owner:'Resolution agent + clarification gate',copy:'Find the intended company, verify its identity and domain, and pause for a person to clarify when the match is ambiguous.'},
+ s2:{code:'S2 · Research fan-out',title:'Build an evidence base',owner:'Profile researcher + parallel source researchers',copy:'Create a company profile from authoritative sources, then gather evidence across company, hiring, customer voice, press, product and systems sources. Independent channels let the run cover more ground efficiently.'},
+ s3:{code:'S3 · Problem discovery',title:'Discover operational problems',owner:'Direct discovery + inference + grounding review',copy:'Look for directly reported friction first, then form clearly labeled hypotheses from verified operating signals. A grounding guard checks whether the cited evidence supports each candidate.'},
+ s4:{code:'S4 · Ranking and selection',title:'Choose an opportunity',owner:'Scoring and selection logic',copy:'Rank candidate problems using evidence strength, business impact, automation fit, timeliness, credibility and buyer context. Keep the chosen issue connected to its supporting evidence.'},
+ s5:{code:'S5 · Solution design',title:'Shape the solution',owner:'Solution design agent',copy:'Design an implementable workflow in response to the selected problem, using the stated seller capability and the recipient context. Avoid introducing a different operational problem.'},
+ s6:{code:'S6 · Outreach drafting',title:'Write the outreach',owner:'Drafting agent',copy:'Draft an evidence-aware email, a short connection note and internal rationale. Direct problems are stated carefully; inferred problems are framed as questions or hypotheses.'},
+ s7:{code:'S7 · Grounding check',title:'Review claims against evidence',owner:'Grounding evaluator + deterministic checks',copy:'Inspect factual claims, citations, person-level assertions and draft quality. Flag unsupported or uncertain copy so it can be reviewed before use.'},
+ s8:{code:'S8 · Human review',title:'Review, edit or reject',owner:'Human decision · no automatic send',copy:'The final draft is presented for inspection. The reviewer can edit, approve or reject it; approving never triggers automatic sending.'}
+};
+const buttons=[...document.querySelectorAll('[data-stage]')];
+function selectStage(id){const s=stages[id];if(!s)return;buttons.forEach(b=>{const active=b.dataset.stage===id;b.classList.toggle('selected',active);b.setAttribute('aria-pressed',String(active))});document.getElementById('detail-code').textContent=s.code;document.getElementById('detail-title').textContent=s.title;document.getElementById('detail-owner').textContent=s.owner;document.getElementById('detail-copy').textContent=s.copy}
+buttons.forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.stage==='s0'));b.addEventListener('click',()=>selectStage(b.dataset.stage))});
+</script>
+</body>
+</html>

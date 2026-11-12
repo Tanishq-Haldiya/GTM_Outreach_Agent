@@ -44,13 +44,53 @@ function fillPersonInput(name, comp, city) {
   if (document.getElementById('person_name')) {
     document.getElementById('person_name').value = name;
   }
+  // The unified form uses the company field as the visible employer clue.
+  if (document.getElementById('company_name') && comp) {
+    document.getElementById('company_name').value = comp;
+  }
   if (document.getElementById('company_hint')) {
     document.getElementById('company_hint').value = comp || '';
   }
   if (document.getElementById('city_hint')) {
     document.getElementById('city_hint').value = city || '';
   }
+  updateRunModePreview();
 }
+
+function updateRunModePreview() {
+  const company = document.getElementById('company_name')?.value.trim() || '';
+  const person = document.getElementById('person_name')?.value.trim() || '';
+  const role = document.getElementById('recipient_role')?.value.trim() || '';
+  const titleEl = document.getElementById('run-mode-title');
+  const descriptionEl = document.getElementById('run-mode-description');
+  const badgeEl = document.getElementById('run-mode-badge');
+  if (!titleEl || !descriptionEl || !badgeEl) return;
+
+  if (person) {
+    titleEl.textContent = role ? 'Person-first research with role context' : 'Person-first research';
+    descriptionEl.textContent = role
+      ? `We'll research ${person}, use ${role} to guide the opportunity framing, and tailor the draft for that role.`
+      : company
+        ? `We'll start with ${person}, using ${company} as an employer clue while we resolve their profile.`
+        : `We'll identify ${person}'s employer and role, then build outreach around the person.`;
+    badgeEl.textContent = role ? 'Person + role' : 'Person-first';
+  } else if (company) {
+    titleEl.textContent = role ? 'Company research with role context' : 'Company-level research';
+    descriptionEl.textContent = role
+      ? `We'll research ${company}'s opportunities and shape the draft for a ${role}.`
+      : `We'll research ${company} and surface grounded operational opportunities.`;
+    badgeEl.textContent = role ? 'Company + role' : 'Company';
+  } else {
+    titleEl.textContent = 'Choose a company or person';
+    descriptionEl.textContent = 'A role adds context to the draft. Start with a company name or a person to begin research.';
+    badgeEl.textContent = role ? 'Role adds context' : 'Ready when you are';
+  }
+}
+
+['company_name', 'person_name', 'recipient_role'].forEach((id) => {
+  document.getElementById(id)?.addEventListener('input', updateRunModePreview);
+});
+updateRunModePreview();
 
 // Preflight Check on load
 async function checkPreflight() {
@@ -126,7 +166,14 @@ if (launchFormEl) {
     const companyNameEl = document.getElementById('company_name');
     const personName = personNameEl ? personNameEl.value.trim() : null;
     const companyName = companyNameEl ? companyNameEl.value.trim() : (personName ? `Prospect: ${personName}` : '');
-    if (!companyName && !personName) return;
+    if (!companyName && !personName) {
+      const feedback = document.getElementById('launch-form-feedback');
+      if (feedback) feedback.textContent = 'Enter a company or person to start research.';
+      (companyNameEl || personNameEl)?.focus();
+      return;
+    }
+    const feedback = document.getElementById('launch-form-feedback');
+    if (feedback) feedback.textContent = '';
 
     const payload = {
       person_name: personName,
@@ -648,6 +695,7 @@ function renderHypotheses(hypotheses, activeHypId = null) {
     };
 
     // Category Label & Grounding Guard
+    const groundingNeedsReview = h.grounding_status !== 'verified';
     const isDirect = (h.category_label || '').toLowerCase().includes('direct') || (h.layer || '').toLowerCase() === 'stated';
     const categoryBadge = isDirect
       ? `<span class="hyp-category-badge category-direct" title="Explicitly mentioned in user reviews, Reddit, or company announcements">🎯 DIRECT / STATED</span>`
@@ -773,12 +821,14 @@ function renderHypotheses(hypotheses, activeHypId = null) {
 
       <div class="hyp-action-bar">
         ${isActive ? `
-          <span class="badge-active-hyp">★ ACTIVE FOR OUTREACH</span>
-          <span style="font-size: 0.72rem; color: #94A3B8;">Architecture &amp; Draft Built for This Problem</span>
+          ${groundingNeedsReview
+            ? '<span class="badge-grounding-pending">SELECTED - GROUNDING REVIEW NEEDED</span>'
+            : '<span class="badge-active-hyp">ACTIVE FOR OUTREACH</span>'}
+          <span style="font-size: 0.72rem; color: #94A3B8;">${groundingNeedsReview ? 'Draft prepared; verify the cited evidence before outreach.' : 'Architecture &amp; Draft Built for This Problem'}</span>
         ` : `
           <span style="font-size: 0.72rem; color: #94A3B8;">Alternative Hypothesis</span>
           <button type="button" class="btn-select-hyp" onclick="selectProblemHypothesis('${h.id}')">
-            Select Problem &amp; Generate Outreach →
+            Select Problem &amp; Generate Outreach
           </button>
         `}
       </div>
