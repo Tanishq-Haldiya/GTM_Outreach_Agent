@@ -1,4 +1,4 @@
-# Zamp AI Solutions Analyst — Grounded GTM Outreach Engine
+# Grounded GTM Outreach Engine
 > **PS-3: Personalised Outreach (From Prospect to Draft)**  
 > Autonomous, evidence-grounded B2B operational intelligence and outreach engine with strict anti-hallucination guardrails and interactive human-in-the-loop review.
 
