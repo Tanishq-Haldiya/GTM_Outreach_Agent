@@ -1,0 +1,72 @@
+[
+  {
+    "name": "Ramp",
+    "category": "happy_path",
+    "type": "private_fintech",
+    "website": "https://ramp.com",
+    "expected_behavior": "High confidence auto-confirm, detects high volume expense/AP workflows"
+  },
+  {
+    "name": "Brex",
+    "category": "happy_path",
+    "type": "private_fintech",
+    "website": "https://brex.com",
+    "expected_behavior": "Auto-confirm, corporate cards and travel/spend management friction"
+  },
+  {
+    "name": "Gusto",
+    "category": "happy_path",
+    "type": "payroll_hr",
+    "website": "https://gusto.com",
+    "expected_behavior": "Auto-confirm, payroll tax compliance and benefits administration"
+  },
+  {
+    "name": "Toast",
+    "category": "happy_path",
+    "type": "public_saas",
+    "website": "https://pos.toasttab.com",
+    "expected_behavior": "Auto-confirm, hardware inventory and merchant onboarding"
+  },
+  {
+    "name": "Figma",
+    "category": "happy_path",
+    "type": "collaborative_software",
+    "website": "https://figma.com",
+    "expected_behavior": "Auto-confirm, enterprise licensing and sales ops"
+  },
+  {
+    "name": "Mercury",
+    "category": "edge_case_ambiguous",
+    "type": "bank_vs_insurance",
+    "website": null,
+    "expected_behavior": "Confidence < 0.80 triggers S1 clarification card (Mercury Bank vs Mercury Insurance vs MercuryGate)"
+  },
+  {
+    "name": "Apollo",
+    "category": "edge_case_ambiguous",
+    "type": "leadgen_vs_graphql_vs_pe",
+    "website": null,
+    "expected_behavior": "Confidence < 0.80 triggers S1 clarification card (Apollo.io vs Apollo GraphQL vs Apollo Global Management)"
+  },
+  {
+    "name": "Linear",
+    "category": "edge_case_ambiguous",
+    "type": "issue_tracker_vs_air",
+    "website": null,
+    "expected_behavior": "Triggers candidate disambiguation"
+  },
+  {
+    "name": "Flexport",
+    "category": "happy_path",
+    "type": "logistics_freight",
+    "website": "https://flexport.com",
+    "expected_behavior": "Freight invoice reconciliation and customs document verification"
+  },
+  {
+    "name": "TinyLocalBakeryXYZ",
+    "category": "edge_case_thin_data",
+    "type": "small_business",
+    "website": null,
+    "expected_behavior": "S1 pauses or falls back with insufficient-evidence graceful degradation"
+  }
+]
