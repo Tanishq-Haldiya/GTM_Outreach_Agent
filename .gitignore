@@ -1,0 +1,22 @@
+﻿# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Runtime databases and transient outputs
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local experiments
+scratch/
