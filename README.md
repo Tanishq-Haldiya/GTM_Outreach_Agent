@@ -13,7 +13,7 @@
 ### 1. Prerequisites
 Ensure Python 3.10+ is installed:
 ```bash
-pip install fastapi uvicorn pydantic httpx requests groq google-genai python-dotenv rapidfuzz beautifulsoup4 pytest
+pip install fastapi uvicorn pydantic httpx requests groq google-genai python-dotenv rapidfuzz beautifulsoup4 pyyaml pytest
 ```
 
 ### 2. Environment Setup
