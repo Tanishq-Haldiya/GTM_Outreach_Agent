@@ -102,6 +102,82 @@ def _is_hypothesis_grounded_and_realistic(hyp: ProblemHypothesis, company: Compa
 
     return True
 
+
+def _build_inferred_signal_fallback(
+    company: CompanyIdentity,
+    evidence: List[EvidenceItem],
+) -> Optional[ProblemHypothesis]:
+    """Create one explicitly provisional inference from a verified growth signal.
+
+    This is only used when S3's model/audit path leaves no inferred candidate.
+    The claim stays tied to a real evidence ID and is marked for human review.
+    """
+    signal_patterns = [
+        (
+            "funding",
+            ("funding", "fundraise", "fund-raise", "capital raise", "series a", "series b", "series c", "raised $", "secured investment"),
+            "Recent funding may lead to more hiring and onboarding activity, adding coordination work for recruiting and people operations. Validate whether those workflows are scaling smoothly.",
+            "hr_ops",
+            "Potential recruiting and onboarding load if the company uses the funding to grow its team.",
+        ),
+        (
+            "hiring",
+            ("hiring", "open roles", "job openings", "recruiting", "headcount growth", "staff expansion"),
+            "Active hiring may increase candidate review, onboarding, and team handoffs. Validate where recruiting workflows rely on manual coordination.",
+            "hr_ops",
+            "Potential increase in candidate review and onboarding volume from the reported hiring activity.",
+        ),
+        (
+            "expansion",
+            ("expanded into", "expanding into", "new market", "new region", "new location", "market expansion", "geographic expansion"),
+            "Expansion into new markets may add cross-team handoffs and local operational work. Validate whether existing workflows can support that complexity without more manual coordination.",
+            "operations",
+            "Potentially more cross-team handoffs as the reported expansion adds markets or locations.",
+        ),
+        (
+            "growth",
+            ("rapid growth", "scaling quickly", "scale up", "volume increase", "orders grew", "customer growth"),
+            "Reported growth may increase cross-functional handoffs and reconciliation workload. Validate which workflows, if any, are becoming harder to manage manually.",
+            "operations",
+            "Potential additional coordination and reconciliation load as reported volumes grow.",
+        ),
+    ]
+
+    matches = []
+    for item in evidence:
+        source_text = f"{item.claim or ''} {item.excerpt or ''}".lower()
+        for kind, terms, problem, lens, burden in signal_patterns:
+            if any(term in source_text for term in terms):
+                authority = float(getattr(item, "authority_score", 0.65) or 0.65)
+                matches.append((authority, item, kind, problem, lens, burden))
+                break
+
+    if not matches:
+        return None
+
+    _, item, kind, problem, lens, burden = max(matches, key=lambda match: match[0])
+    source_fact = (item.claim or item.excerpt or "").strip()
+    return ProblemHypothesis(
+        id=f"hyp_inferred_review_{uuid.uuid4().hex[:8]}",
+        problem=problem,
+        lens=lens,
+        lens_explanation=f"A possible {kind}-related workflow pressure inferred from a verified company signal.",
+        layer="inferred",
+        category_label="Inferred / Assumed (Hypothesized)",
+        evidence_ids=[item.id],
+        evidence_strength=0.55,
+        business_impact=0.65,
+        automatability=0.65,
+        timeliness=0.65,
+        buyer_credibility=round(min(0.75, max(0.4, float(getattr(item, "authority_score", 0.65) or 0.65) * 0.75)), 2),
+        root_cause=f"Observed source signal: {source_fact}",
+        workflow_burden=burden,
+        automation_fit="If confirmed, explore workflow automation that reduces manual coordination while keeping a human review step.",
+        rationale=f"Provisional inference from cited evidence: {source_fact}",
+        grounding_status="pending_review",
+        grounding_critique="The cited source confirms the growth signal; the downstream workflow pressure is a hypothesis to validate with the buyer, not a reported fact.",
+    )
+
 async def audit_problem_grounding(
     hypotheses: List[ProblemHypothesis],
     evidence: List[EvidenceItem],
@@ -164,6 +240,7 @@ TASK FOR HYPOTHESIS GROUNDING GUARD AGENT:
      * category_label: "Inferred / Assumed (Hypothesized)"
      * layer: "inferred"
      * grounding_critique: State clearly that manual exception handling is inferred from operational support indicators (e.g. dedicated phone line) rather than an explicit customer complaint.
+   - For an explicitly labeled inferred hypothesis, the cited evidence must support the underlying signal, but it does not need to state the downstream workflow problem as a fact. A plausible second-order inference (for example, funding may lead to hiring and onboarding load) should be accepted as a hypothesis, with a critique that tells the SDR to validate it. Reject it only when the cited evidence is irrelevant, contradicts the inference, or points to a different company.
 3. RECENCY & TEMPORAL VALIDITY AUDIT (CRITICAL):
    - Current Date Anchor: {current_date_str}.
    - Check if any problem statement is narrowly anchored to an expired seasonal promotion or holiday campaign from months ago (e.g. 'New Year streak', 'Valentine promo', 'Black Friday').
@@ -248,7 +325,10 @@ async def discover_problems(
     2. Then infers/assumes operational challenges the company 'might' face based on trajectory and scaling facts.
     3. Runs the result through the Hypothesis Grounding Guard Agent for rigorous verification.
     """
-    clean_evidence = [e for e in evidence if _is_evidence_claim_valid(e.claim, e.excerpt, company)]
+    source_verified_evidence = [
+        e for e in evidence if _is_evidence_claim_valid(e.claim, e.excerpt, company)
+    ]
+    clean_evidence = source_verified_evidence
     if not clean_evidence:
         clean_evidence = evidence
 
@@ -496,6 +576,18 @@ Output strictly in JSON:
     # --- STEP 3 GUARD AGENT: AUDIT GROUNDING ---
     audited_hypotheses = await audit_problem_grounding(all_hypotheses, clean_evidence, company, profile)
     result_hypotheses = audited_hypotheses
+
+    # Preserve a useful, clearly provisional inferred hypothesis when verified
+    # growth evidence exists but model output or the strict audit removed every
+    # inference. Never synthesize one without a matching source item.
+    if not any(
+        h.layer == "inferred" or "inferred" in (h.category_label or "").lower()
+        for h in result_hypotheses
+    ):
+        fallback_hypothesis = _build_inferred_signal_fallback(company, source_verified_evidence)
+        if fallback_hypothesis:
+            logger.info("Adding source-linked inferred hypothesis for human review: %s", fallback_hypothesis.problem)
+            result_hypotheses.append(fallback_hypothesis)
 
     # Tag owner_function on all hypotheses
     for h in result_hypotheses:
