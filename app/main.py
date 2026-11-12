@@ -6,7 +6,7 @@ import hashlib
 import hmac
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -117,21 +117,15 @@ async def serve_index():
         return HTMLResponse(content=index_file.read_text(encoding="utf-8"))
     return HTMLResponse("<h1>GTM Outreach Backend Ready</h1>")
 
-@app.get("/recipient", response_class=HTMLResponse)
-@app.get("/personalised", response_class=HTMLResponse)
+@app.get("/recipient")
+@app.get("/personalised")
 async def serve_recipient():
-    recip_file = web_dir / "recipient.html"
-    if recip_file.exists():
-        return HTMLResponse(content=recip_file.read_text(encoding="utf-8"))
-    return HTMLResponse("<h1>Recipient Pipeline Ready</h1>")
+    return RedirectResponse(url="/", status_code=303)
 
-@app.get("/tier3", response_class=HTMLResponse)
-@app.get("/person", response_class=HTMLResponse)
+@app.get("/tier3")
+@app.get("/person")
 async def serve_tier3():
-    tier3_file = web_dir / "tier3.html"
-    if tier3_file.exists():
-        return HTMLResponse(content=tier3_file.read_text(encoding="utf-8"))
-    return HTMLResponse("<h1>Person-First Pipeline (Tier 3) Ready</h1>")
+    return RedirectResponse(url="/", status_code=303)
 
 @app.post("/api/runs")
 async def create_run(req: RunCreate, background_tasks: BackgroundTasks):
@@ -150,7 +144,8 @@ async def create_run(req: RunCreate, background_tasks: BackgroundTasks):
 
     hints = {
         "website_hint": req.website_hint,
-        "country_hint": req.country_hint or city_hint,
+        # A person's city is useful for S0 identity resolution but does not imply company HQ.
+        "country_hint": req.country_hint or (city_hint if not req.person_name else None),
         "city_hint": city_hint,
         "industry_hint": req.industry_hint,
         "recipient_name": recip_name,

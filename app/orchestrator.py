@@ -27,6 +27,44 @@ from app.stages.s7_check import verify_grounding
 
 logger = logging.getLogger(__name__)
 
+
+def _add_person_context_to_company_resolution(profile: PersonProfile, hints: Dict[str, Any]) -> None:
+    """Carry the selected person's employer evidence into company disambiguation."""
+    company = (profile.company_raw or "").strip()
+    matching_roles = [
+        candidate for candidate in profile.alternatives
+        if (candidate.company_raw or "").strip().casefold() == company.casefold()
+        and (candidate.name or "").strip().casefold() == (profile.name or "").strip().casefold()
+    ]
+    evidence_lines = []
+    for candidate in matching_roles[:3]:
+        snippet = (candidate.snippet_text or "").strip()
+        source = (candidate.source_url or "").strip()
+        evidence_lines.append(
+            f"Current employer claim: {candidate.name} — {candidate.title_raw} at "
+            f"{candidate.company_raw}; source type: {candidate.source_type}; "
+            f"source URL: {source or 'not provided'}; corroborating sources: "
+            f"{candidate.independent_sources_count}. Evidence: {snippet[:500] or 'no excerpt available'}"
+        )
+
+    hints["s0_person_name"] = profile.name
+    hints["s0_person_company"] = company
+    hints["s0_person_title"] = profile.title_normalized or profile.title_raw
+    hints["s0_person_confidence"] = profile.confidence
+    hints["s0_person_context"] = "\n".join(evidence_lines)
+    hints["s0_evidence_urls"] = list(dict.fromkeys(
+        url for candidate in matching_roles for url in candidate.evidence_urls if url
+    )) or profile.evidence_urls
+    evidence_url_count = len(hints["s0_evidence_urls"])
+    hints["s0_employment_corroboration"] = (
+        1.0 if evidence_url_count >= 2 else 0.85
+    ) if profile.confidence >= 0.70 else 0.0
+
+    # Preserve a sector qualifier when the resolved employer is labeled, e.g. "Mercury (Finance)".
+    qualifiers = re.findall(r"\(([^)]+)\)", company)
+    if qualifiers and not hints.get("industry_hint"):
+        hints["s0_company_sector"] = " ".join(qualifiers)
+
 async def start_run(run_id: str, company_input: str, hints: Dict[str, Any], mode: str = "fast", person_profile: Optional[PersonProfile] = None):
     """Starts a new outreach synthesis pipeline run (supports both Company-First and Person-First)."""
     start_time = time.time()
@@ -108,10 +146,7 @@ async def start_run(run_id: str, company_input: str, hints: Dict[str, Any], mode
             hints["recipient_role"] = profile.title_normalized
             hints["recipient_lens"] = profile.function
             hints["seniority"] = profile.seniority
-            hints["s0_evidence_urls"] = profile.evidence_urls
-            hints["s0_employment_corroboration"] = 1.0 if len(profile.evidence_urls) >= 2 else 0.85
-            if profile.location and not hints.get("country_hint"):
-                hints["country_hint"] = profile.location
+            _add_person_context_to_company_resolution(profile, hints)
 
         except Exception as e:
             logger.exception(f"Pipeline error in S0 for run {run_id}: {e}")
@@ -611,7 +646,7 @@ async def run_stages_s2_to_s8(
                 "timeliness": h.timeliness, "credibility": h.buyer_credibility
             }), h.final_score, h.rank, h.rationale, h.lens_explanation, h.root_cause, h.workflow_burden, h.automation_fit,
             getattr(h, "category_label", "Direct / Stated (Explicit)"),
-            getattr(h, "grounding_status", "verified"),
+            getattr(h, "grounding_status", "pending_review"),
             getattr(h, "grounding_critique", ""),
             json.dumps(getattr(h, "score_breakdown", {}) or {}),
             getattr(h, "base_score", h.final_score),
@@ -704,6 +739,11 @@ async def run_stages_s2_to_s8(
 
     verified_draft, quality_report = await verify_grounding(draft, identity.name, evidence_list)
     s7_dur = time.time() - t_s7
+    swap_test_unavailable = any(
+        "swap test unavailable" in note.lower() or "no valid verdict" in note.lower()
+        for note in quality_report.notes
+    )
+    swap_test_status = "PASSED" if quality_report.passed_swap_test else ("UNAVAILABLE" if swap_test_unavailable else "FAILED")
 
     # Persist draft
     conn.execute(
@@ -722,7 +762,7 @@ async def run_stages_s2_to_s8(
         run_id,
         "s7_check",
         "stage_completed",
-        f"Quality gate passed (Verdict: {quality_report.verdict}, Swap Test: {'PASSED' if quality_report.passed_swap_test else 'FAILED'}).",
+        f"Quality checks completed (Verdict: {quality_report.verdict}, Swap Test: {swap_test_status}).",
         payload={"report": quality_report.model_dump(), "draft": verified_draft.model_dump()},
         duration=s7_dur
     )
@@ -792,7 +832,7 @@ async def generate_pipeline_for_hypothesis(run_id: str, hypothesis_id: str):
         workflow_burden=h_dict.get("workflow_burden"),
         automation_fit=h_dict.get("automation_fit"),
         category_label=h_dict.get("category_label") or "Direct / Stated (Explicit)",
-        grounding_status=h_dict.get("grounding_status") or "verified",
+        grounding_status=h_dict.get("grounding_status") or "pending_review",
         grounding_critique=h_dict.get("grounding_critique")
     )
 
@@ -887,6 +927,11 @@ async def generate_pipeline_for_hypothesis(run_id: str, hypothesis_id: str):
     await emit_event(run_id, "s7_check", "stage_started", "Running automated Swap-The-Name test and claim verification...")
 
     verified_draft, quality_report = await verify_grounding(draft, company_name, evidence_list)
+    swap_test_unavailable = any(
+        "swap test unavailable" in note.lower() or "no valid verdict" in note.lower()
+        for note in quality_report.notes
+    )
+    swap_test_status = "PASSED" if quality_report.passed_swap_test else ("UNAVAILABLE" if swap_test_unavailable else "FAILED")
     s7_dur = time.time() - t_s7
 
     conn.execute(
@@ -905,7 +950,7 @@ async def generate_pipeline_for_hypothesis(run_id: str, hypothesis_id: str):
         run_id,
         "s7_check",
         "stage_completed",
-        f"Quality gate passed (Verdict: {quality_report.verdict}).",
+        f"Quality checks completed (Verdict: {quality_report.verdict}, Swap Test: {swap_test_status}).",
         payload={"report": quality_report.model_dump(), "draft": verified_draft.model_dump()},
         duration=s7_dur
     )
@@ -1142,10 +1187,7 @@ async def _continue_from_s0_to_pipeline(run_id: str, profile: PersonProfile, hin
     hints["recipient_role"] = profile.title_normalized
     hints["recipient_lens"] = profile.function
     hints["seniority"] = profile.seniority
-    hints["s0_evidence_urls"] = profile.evidence_urls
-    hints["s0_employment_corroboration"] = 1.0 if len(profile.evidence_urls) >= 2 else 0.85
-    if profile.location and not hints.get("country_hint"):
-        hints["country_hint"] = profile.location
+    _add_person_context_to_company_resolution(profile, hints)
 
     t0 = time.time()
     await emit_event(run_id, "s1_resolve", "run_started", f"Starting company verification for '{company_input}'")
@@ -1321,7 +1363,7 @@ async def override_prospect(
                     "timeliness": h.timeliness, "credibility": h.buyer_credibility
                 }), h.final_score, h.rank, h.rationale, h.lens_explanation, h.root_cause, h.workflow_burden, h.automation_fit,
                 getattr(h, "category_label", "Direct / Stated (Explicit)"),
-                getattr(h, "grounding_status", "verified"),
+                getattr(h, "grounding_status", "pending_review"),
                 getattr(h, "grounding_critique", ""),
                 json.dumps(getattr(h, "score_breakdown", {}) or {}),
                 getattr(h, "base_score", h.final_score),

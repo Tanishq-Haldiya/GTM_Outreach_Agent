@@ -50,12 +50,25 @@ def _extract_domain(url: str) -> str:
     except Exception:
         return ""
 
-async def discover_candidates(company_input: str) -> List[CompanyCandidate]:
+async def discover_candidates(company_input: str, hints: Optional[Dict[str, Any]] = None) -> List[CompanyCandidate]:
     """
     Retrieves web signals and extracts distinct candidate entities sharing the given name.
     """
+    hints = hints or {}
     clean_input = _clean_company_name(company_input)
-    search_task = search_web(f"{company_input} company official website overview", max_results=6)
+    # Name and title only retrieve employment corroboration; they are not company-sector signals.
+    person_name = (hints.get("s0_person_name") or "").strip()
+    person_title = (hints.get("s0_person_title") or "").strip()
+    person_context = (hints.get("s0_person_context") or "").strip()
+    sector_hint = (hints.get("s0_company_sector") or "").strip()
+    if person_name:
+        search_query = (
+            f'"{company_input}" "{person_name}" {person_title} '
+            f'{sector_hint} official company website current employer'
+        )
+    else:
+        search_query = f"{company_input} company official website overview"
+    search_task = search_web(search_query, max_results=6)
     wiki_task = search_wikidata_entities(company_input, limit=4)
     search_res, wiki_res = await asyncio.gather(search_task, wiki_task)
 
@@ -67,11 +80,22 @@ async def discover_candidates(company_input: str) -> List[CompanyCandidate]:
     snippets_combined = "\n".join(snippets)
 
     # Prompt LLM to extract structured distinct candidate entities
+    if person_name:
+        extraction_task = f"""The input is a person-first handoff. Resolve the ONE employer represented by the selected current role for {person_name} at "{company_input}". Use current-employment evidence and search-result URLs to identify its official domain. Do not add unrelated companies just because they share the employer's name. If available sources do not establish an official domain, return no candidates instead of guessing."""
+    else:
+        extraction_task = f"""Identify up to 4 plausible distinct companies that match or share the name "{company_input}"."""
+
     extract_prompt = f"""User input company: "{company_input}".
+Person context (when present, use it to distinguish same-name companies):
+- Person: {person_name or 'not provided'}
+- Current title: {person_title or 'not provided'}
+- Sector qualifier: {sector_hint or 'not provided'}
+- Employment evidence snippets: {person_context or 'not provided'}
 Research search results:
 {snippets_combined}
 
-Identify up to 4 plausible distinct companies that match or share the name "{company_input}".
+{extraction_task}
+When person context is provided, a person's name or title may help locate corroborating sources, but must not be treated as evidence of the company's industry, location, or identity on its own. Preserve uncertainty when the evidence does not identify an official domain.
 For each company, provide:
 - name: clear company brand/legal name
 - domain: official website domain (e.g. ramp.com, mercury.com, apollo.io)
@@ -158,6 +182,15 @@ Return strictly JSON with key "candidates": list of objects."""
                 ))
                 break
 
+    if not candidates and person_name:
+        # Retain the selected employer name without inventing a domain.
+        candidates.append(CompanyCandidate(
+            name=company_input,
+            domain="",
+            description="Current employer identified from person context; official domain still needs confirmation.",
+            sources=["person_employment_context"]
+        ))
+
     if not candidates:
         candidates.append(CompanyCandidate(
             name=company_input,
@@ -192,7 +225,7 @@ def score_candidates_pool(
     clean_input = _clean_company_name(company_input)
     website_hint = (hints.get("website_hint") or "").lower()
     country_hint = (hints.get("country_hint") or "").lower()
-    industry_hint = (hints.get("industry_hint") or "").lower()
+    industry_hint = (hints.get("industry_hint") or hints.get("s0_company_sector") or "").lower()
     
     # Merge all answers into a searchable answer corpus
     answer_text = " ".join(answers_history or []).lower()
@@ -229,7 +262,16 @@ def score_candidates_pool(
         # Check industry hint
         if industry_hint:
             total_checks += 1
-            if industry_hint in c.industry.lower() or industry_hint in c.description.lower():
+            industry_text = f"{c.industry} {c.description} {c.distinguishing_fact}".lower()
+            sector_aliases = {
+                "finance": ("finance", "financial", "fintech", "banking", "payments", "accounting"),
+                "financial services": ("finance", "financial", "fintech", "banking", "payments"),
+                "health": ("health", "medical", "healthcare", "biotech", "pharma"),
+                "healthcare": ("health", "medical", "healthcare", "biotech", "pharma"),
+                "technology": ("technology", "software", "tech", "saas", "platform"),
+            }
+            aliases = sector_aliases.get(industry_hint, (industry_hint,))
+            if any(term in industry_text for term in aliases):
                 matched_points += 1
 
         # Check country / location hint
@@ -243,8 +285,12 @@ def score_candidates_pool(
         # award a joint-confidence bonus to hint match.
         s0_evidence_urls = hints.get("s0_evidence_urls") or []
         s0_corrob = float(hints.get("s0_employment_corroboration") or 0.0)
+        s0_employment_context = (hints.get("s0_person_context") or "").lower()
         if s0_corrob >= 0.70 and s0_evidence_urls and c.domain:
-            if any(c.domain in u.lower() for u in s0_evidence_urls):
+            if (
+                any(c.domain in u.lower() for u in s0_evidence_urls)
+                or c.domain in s0_employment_context
+            ):
                 matched_points += 2.5
                 total_checks += 2.5
 
@@ -325,6 +371,8 @@ def generate_clarifying_question(candidates: List[CompanyCandidate], round_num: 
     Round 3: Official Domain / Website
     """
     if len(candidates) < 2:
+        if not candidates[0].domain:
+            return f"Could you provide the official website or domain for {candidates[0].name}?"
         return f"Could you provide the official website domain for {candidates[0].name} (e.g., {candidates[0].domain})?"
 
     c1 = candidates[0]
@@ -353,10 +401,23 @@ async def resolve_company(
     """
     Main S1 entrypoint: Discovers candidate entities and scores them against the 0.80 threshold.
     """
-    candidates = await discover_candidates(company_input)
+    candidates = await discover_candidates(company_input, hints)
     scored_candidates, best, confidence, is_confirmed = score_candidates_pool(
         candidates, company_input, hints, answers_history=[]
     )
+
+    # For a person-first run, a plausible company domain is not the same as an employer-verified domain.
+    # Require the selected employment evidence to point to the domain before auto-confirming it.
+    if hints.get("s0_person_name"):
+        employment_urls = [u.lower() for u in (hints.get("s0_evidence_urls") or [])]
+        employment_context = (hints.get("s0_person_context") or "").lower()
+        domain_supported = bool(best.domain) and (
+            any(best.domain.lower() in url for url in employment_urls)
+            or best.domain.lower() in employment_context
+        )
+        if not domain_supported:
+            is_confirmed = False
+            confidence = min(confidence, S1_CONFIDENCE_THRESHOLD - 0.01)
 
     clarification_questions = []
     if not is_confirmed:
