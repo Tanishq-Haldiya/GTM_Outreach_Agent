@@ -2,13 +2,15 @@ import uuid
 import asyncio
 import time
 import json
+import hashlib
+import hmac
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import ASSUMPTIONS_LOG, BASE_DIR
+from app.config import APP_ENV, ASSUMPTIONS_LOG, BASE_DIR, DEMO_ACCESS_CODE
 from app.db import (
     init_db, insert_run, get_run, get_all_runs,
     get_run_events, get_run_full_details, get_db
@@ -34,9 +36,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+DEMO_ACCESS_COOKIE = "gtm_demo_access"
+
+def _demo_access_token() -> str:
+    return hmac.new(
+        DEMO_ACCESS_CODE.encode("utf-8"),
+        b"gtm-outreach-demo-access",
+        hashlib.sha256,
+    ).hexdigest()
+
+@app.middleware("http")
+async def protect_demo_api(request: Request, call_next):
+    path = request.url.path
+    if (
+        DEMO_ACCESS_CODE
+        and path.startswith("/api/")
+        and path != "/api/access"
+        and not hmac.compare_digest(
+            request.cookies.get(DEMO_ACCESS_COOKIE, ""), _demo_access_token()
+        )
+    ):
+        return JSONResponse(status_code=401, content={"detail": "Demo access required"})
+    return await call_next(request)
+
 # Initialize Database on startup
 @app.on_event("startup")
 def on_startup():
+    if APP_ENV == "production" and len(DEMO_ACCESS_CODE) < 20:
+        raise RuntimeError("Production requires a DEMO_ACCESS_CODE of at least 20 characters")
     init_db()
 
 @app.on_event("shutdown")
@@ -46,6 +73,42 @@ async def on_shutdown():
 # Serve static web assets
 web_dir = Path(__file__).resolve().parent / "web"
 app.mount("/static", StaticFiles(directory=str(web_dir)), name="static")
+
+@app.get("/healthz")
+async def health_check():
+    return {"status": "ok"}
+
+@app.get("/api/access")
+async def demo_access_status(request: Request):
+    authenticated = not DEMO_ACCESS_CODE or hmac.compare_digest(
+        request.cookies.get(DEMO_ACCESS_COOKIE, ""), _demo_access_token()
+    )
+    return {"required": bool(DEMO_ACCESS_CODE), "authenticated": authenticated}
+
+@app.post("/api/access")
+async def grant_demo_access(request: Request):
+    if not DEMO_ACCESS_CODE:
+        return {"required": False, "authenticated": True}
+    try:
+        payload = await request.json()
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid request body")
+    supplied_code = payload.get("code") if isinstance(payload, dict) else None
+    if not isinstance(supplied_code, str) or not hmac.compare_digest(supplied_code, DEMO_ACCESS_CODE):
+        raise HTTPException(status_code=401, detail="Invalid demo access code")
+
+    response = JSONResponse({"required": True, "authenticated": True})
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip()
+    response.set_cookie(
+        DEMO_ACCESS_COOKIE,
+        _demo_access_token(),
+        max_age=60 * 60 * 12,
+        httponly=True,
+        secure=request.url.scheme == "https" or forwarded_proto == "https",
+        samesite="lax",
+        path="/",
+    )
+    return response
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
