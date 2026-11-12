@@ -12,6 +12,50 @@ from app.stages.s2_research import _is_evidence_claim_valid, _is_inferred_only_u
 
 logger = logging.getLogger(__name__)
 
+
+def _clip_prompt_text(value: Optional[str], limit: int) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    clipped = text[: limit - 1]
+    if " " in clipped:
+        clipped = clipped.rsplit(" ", 1)[0]
+    return clipped + "…"
+
+
+def _evidence_prompt_record(evidence: EvidenceItem) -> Dict[str, Any]:
+    return {
+        "id": evidence.id,
+        "researcher": evidence.researcher,
+        "source_type": evidence.source_type,
+        "claim": _clip_prompt_text(evidence.claim, 220),
+        "excerpt": _clip_prompt_text(evidence.excerpt, 320),
+        "signal": evidence.signal_type,
+        "url": _clip_prompt_text(evidence.url, 180),
+    }
+
+
+def _compact_evidence_for_prompt(
+    evidence: List[EvidenceItem],
+    max_items: int = 14,
+) -> List[Dict[str, Any]]:
+    """Bound S3 prompt size while retaining high-authority, recent evidence."""
+    tier_weight = {"A": 4, "B": 3, "C": 2, "S": 1}
+
+    def quality(item: EvidenceItem):
+        try:
+            authority = float(item.authority_score or 0.5)
+        except (TypeError, ValueError):
+            authority = 0.5
+        try:
+            recency = -int(item.recency_days) if item.recency_days is not None else -3650
+        except (TypeError, ValueError):
+            recency = -3650
+        return (authority, tier_weight.get((item.reliability_tier or "").upper(), 0), recency)
+
+    selected = sorted(evidence, key=quality, reverse=True)[:max_items]
+    return [_evidence_prompt_record(item) for item in selected]
+
 def _enforce_deterministic_tier_guard(hyp: ProblemHypothesis, evidence_map: Dict[str, EvidenceItem]) -> None:
     """
     Last-resort deterministic Tier Guard — narrow and precise.
@@ -178,6 +222,67 @@ def _build_inferred_signal_fallback(
         grounding_critique="The cited source confirms the growth signal; the downstream workflow pressure is a hypothesis to validate with the buyer, not a reported fact.",
     )
 
+
+def _build_direct_evidence_fallback(
+    company: CompanyIdentity,
+    evidence: List[EvidenceItem],
+    limit: int = 3,
+) -> List[ProblemHypothesis]:
+    """Surface explicit complaint evidence for human review if S3 LLMs fail."""
+    direct_signals = {
+        "complaint", "outage_downtime", "status_incident", "user_complaint",
+        "bug_report", "dissatisfaction",
+    }
+    complaint_terms = (
+        "not working", "not received", "not delivered", "failed", "failure", "broken",
+        "delay", "delayed", "slow", "poor service", "terrible", "refund", "charged",
+        "fraud", "error", "issue", "complaint", "complain", "unable to", "cannot",
+        "can't", "missing", "long wait", "unresolved", "stuck",
+    )
+    direct_sources = {"review", "reviews", "reddit", "community", "statuspage", "status_incident", "incident_report", "play_store", "app_store"}
+
+    candidates = []
+    for item in evidence:
+        text = f"{item.claim or ''} {item.excerpt or ''}".lower()
+        source_type = (item.source_type or "").lower()
+        signal = (item.signal_type or "").lower()
+        has_explicit_friction = any(term in text for term in complaint_terms)
+        has_direct_signal = any(marker in signal for marker in direct_signals)
+        if not (has_direct_signal or (source_type in direct_sources and has_explicit_friction)):
+            continue
+
+        hypothesis = ProblemHypothesis(
+            id=f"hyp_direct_review_{uuid.uuid4().hex[:8]}",
+            problem=_clip_prompt_text(item.claim or item.excerpt, 280),
+            lens="customer_support" if any(term in text for term in ("support", "ticket", "response", "refund")) else "operations",
+            lens_explanation="A direct complaint or incident signal surfaced while the language model providers were unavailable.",
+            layer="stated",
+            category_label="Direct / Stated (Explicit)",
+            evidence_ids=[item.id],
+            evidence_strength=0.6,
+            business_impact=0.6,
+            automatability=0.6,
+            timeliness=0.6,
+            buyer_credibility=round(float(item.authority_score or 0.65), 2),
+            root_cause="Not assessed because automated problem discovery was unavailable.",
+            workflow_burden="Validate the reported friction and its operational impact with the buyer.",
+            automation_fit="If confirmed, assess whether a workflow automation can reduce the reported manual burden.",
+            rationale=f"Source-backed candidate for human review: {_clip_prompt_text(item.excerpt or item.claim, 220)}",
+            grounding_status="pending_review",
+            grounding_critique="The source contains a direct complaint or incident signal; validate its accuracy, recency, and operational impact before outreach.",
+        )
+        if _is_hypothesis_grounded_and_realistic(hypothesis, company):
+            candidates.append(hypothesis)
+
+    candidates.sort(
+        key=lambda hypothesis: max(
+            (float(item.authority_score or 0.65) for item in evidence if item.id in hypothesis.evidence_ids),
+            default=0.65,
+        ),
+        reverse=True,
+    )
+    return candidates[:limit]
+
 async def audit_problem_grounding(
     hypotheses: List[ProblemHypothesis],
     evidence: List[EvidenceItem],
@@ -205,7 +310,9 @@ async def audit_problem_grounding(
     hypotheses = grounded_hypotheses
     if not hypotheses:
         return []
-    ev_summary = [{"id": e.id, "claim": e.claim, "excerpt": e.excerpt, "source": e.source_type} for e in evidence]
+    cited_ids = {eid for hypothesis in hypotheses for eid in hypothesis.evidence_ids}
+    cited_evidence = [item for item in evidence if item.id in cited_ids]
+    ev_summary = _compact_evidence_for_prompt(cited_evidence, max_items=len(cited_evidence))
 
     hypo_summary = [
         {
@@ -279,23 +386,29 @@ Output strictly in JSON:
             audited_hypotheses = []
             for h in hypotheses:
                 audit = eval_map.get(h.id)
-                if audit and audit.get("verdict", "").lower() == "reject":
+                verdict = str((audit or {}).get("verdict") or "").strip().lower()
+                if verdict == "reject":
                     logger.info(f"Grounding Guard Agent rejected ungrounded hypothesis {h.id}: {h.problem}")
                     continue
-                if audit:
+                if verdict == "accept":
                     if audit.get("problem") and len(audit["problem"]) > 10:
                         h.problem = audit["problem"]
-                    h.category_label = audit.get("category_label", h.category_label)
-                    h.layer = audit.get("layer", h.layer)
+                    category = audit.get("category_label")
+                    if category in {"Direct / Stated (Explicit)", "Inferred / Assumed (Hypothesized)"}:
+                        h.category_label = category
+                    layer = audit.get("layer")
+                    if layer in {"stated", "implied", "inferred"}:
+                        h.layer = layer
                     if audit.get("timeliness") is not None:
                         try:
-                            h.timeliness = float(audit["timeliness"])
+                            h.timeliness = max(0.0, min(1.0, float(audit["timeliness"])))
                         except (ValueError, TypeError):
                             pass
                     h.grounding_status = "verified"
                     h.grounding_critique = audit.get("grounding_critique", "Verified against cited evidence.")
                 else:
                     h.grounding_status = "pending_review"
+                    h.grounding_critique = "The automated audit did not return a clear verdict; verify the cited evidence before outreach."
 
                 # Enforce deterministic Python tier check
                 _enforce_deterministic_tier_guard(h, evidence_map)
@@ -328,34 +441,21 @@ async def discover_problems(
     source_verified_evidence = [
         e for e in evidence if _is_evidence_claim_valid(e.claim, e.excerpt, company)
     ]
+    source_verified_ids = {item.id for item in source_verified_evidence}
     clean_evidence = source_verified_evidence
     if not clean_evidence:
         clean_evidence = evidence
-
-    evidence_payload = [
-        {
-            "id": e.id,
-            "researcher": e.researcher,
-            "source_type": e.source_type,
-            "claim": e.claim,
-            "excerpt": e.excerpt,
-            "tier": e.reliability_tier,
-            "signal": e.signal_type,
-            "url": e.url
-        }
-        for e in clean_evidence
-    ]
 
     # --- TIER 1: DIRECT PROBLEMS DISCOVERY ---
     # Filter evidence strictly for authentic customer complaints, reviews, user feedback, or outages.
     # Inferred-only pages (careers, FAQ, press, branch listings) are explicitly excluded from Tier 1 —
     # they carry legitimate inferred signals but cannot support a Direct / Stated hypothesis.
-    direct_candidates_payload = []
-    for ep in evidence_payload:
-        exc = (ep.get("excerpt") or "").lower()
-        url = (ep.get("url") or "")
-        src = (ep.get("source_type") or "").lower()
-        sig = (ep.get("signal") or "").lower()
+    direct_candidates = []
+    for evidence_item in clean_evidence:
+        exc = (evidence_item.excerpt or "").lower()
+        url = evidence_item.url or ""
+        src = (evidence_item.source_type or "").lower()
+        sig = (evidence_item.signal_type or "").lower()
 
         # Structural exclusion: inferred-only pages (careers, FAQ, press, branch) → Tier 2 only
         if url and _is_inferred_only_url(url):
@@ -368,11 +468,13 @@ async def discover_problems(
             continue
 
         if any(ds in src for ds in ["review", "reddit", "community", "statuspage", "incident_report", "play_store", "app_store"]):
-            direct_candidates_payload.append(ep)
+            direct_candidates.append(evidence_item)
         elif any(ds in sig for ds in ["complaint", "outage_downtime", "status_incident", "user_complaint"]):
-            direct_candidates_payload.append(ep)
+            direct_candidates.append(evidence_item)
         elif any(w in exc for w in ["worst", "poor service", "not working", "broken", "failed", "charged", "delay", "fraud", "cancelled", "terrible", "refund not"]):
-            direct_candidates_payload.append(ep)
+            direct_candidates.append(evidence_item)
+
+    direct_candidates_payload = _compact_evidence_for_prompt(direct_candidates)
 
     all_hypotheses: List[ProblemHypothesis] = []
     valid_evidence_ids = {e.id for e in clean_evidence}
@@ -403,7 +505,7 @@ Output strictly in JSON:
     {{
       "id": "hyp_dir_1",
       "problem": "Clear, specific 1-sentence operational problem directly stated by users/company",
-      "lens": "customer_support | supply_chain_logistics | fulfillment_ops | finance_ops",
+      "lens": "customer_support | supply_chain_logistics | fulfillment_ops | finance_ops | compliance_kyc",
       "lens_explanation": "Why this lens applies",
       "layer": "stated",
       "category_label": "Direct / Stated (Explicit)",
@@ -456,20 +558,24 @@ Output strictly in JSON:
                         all_hypotheses.append(hyp)
         except Exception as e:
             logger.warning(f"Tier 1 direct problem discovery warning: {e}")
+            verified_direct_candidates = [
+                item for item in direct_candidates
+                if item.id in source_verified_ids
+            ]
+            direct_fallbacks = _build_direct_evidence_fallback(company, verified_direct_candidates)
+            if direct_fallbacks:
+                logger.warning(
+                    "Using %d cited direct-evidence candidate(s) marked for human review after provider failure.",
+                    len(direct_fallbacks),
+                )
+                all_hypotheses.extend(direct_fallbacks)
     else:
         logger.info("No direct review/complaint evidence in pool; Tier 1 skipping directly to Tier 2 Inferred discovery.")
 
     # --- TIER 2: INFERRED / TRAJECTORY PROBLEMS DISCOVERY ---
     # Synthesizes Phase 2 outputs (hiring trends, headcount velocity, funding rounds, tools, operational indicators) with Company Profile
-    trajectory_signals = [
-        {
-            "id": e.id,
-            "researcher": e.researcher,
-            "source_type": e.source_type,
-            "claim": e.claim,
-            "excerpt": e.excerpt,
-            "signal": e.signal_type
-        }
+    trajectory_evidence = [
+        e
         for e in clean_evidence
         if e.researcher in [
             "operational_scale_strain", "hiring_and_operations", "news_and_scale", "systems_and_tools",
@@ -481,6 +587,8 @@ Output strictly in JSON:
             "migration_sunset", "status_incident", "leadership_priority", "compliance_risk"
         ]
     ]
+    trajectory_signals = _compact_evidence_for_prompt(trajectory_evidence)
+    inference_evidence_payload = trajectory_signals or _compact_evidence_for_prompt(clean_evidence, max_items=10)
 
     existing_problems_summary = "\n".join([f"- {h.problem} (Category: {h.category_label})" for h in all_hypotheses])
     needed_inferred = max(2, 4 - len(all_hypotheses))
@@ -490,10 +598,7 @@ Industry: {company.industry or 'Technology'}
 {f'Company Profile: What it does: {profile.what_it_does} | Consumers: {profile.target_consumers} | Model: {profile.business_model} | Trajectory: {profile.trajectory}' if profile else ''}
 
 VERIFIED PHASE 2 TRAJECTORY, HIRING & OPERATIONAL SIGNALS:
-{json.dumps(trajectory_signals, indent=2) if trajectory_signals else "Refer to general evidence pool below."}
-
-Full Evidence Pool:
-{json.dumps(evidence_payload, indent=2)}
+{json.dumps(inference_evidence_payload, indent=2) if inference_evidence_payload else "No verified operational signals were found."}
 
 Already Identified Direct Problems:
 {existing_problems_summary or "None"}

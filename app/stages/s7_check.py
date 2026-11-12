@@ -146,7 +146,8 @@ async def verify_grounding(
     unsupported, notes, invented_numbers = _run_deterministic_checks(draft.body, company_name, evidence_list)
 
     # LLM Swap-The-Name Test
-    passed_swap_test = True
+    passed_swap_test = False
+    llm_check_completed = False
     ev_summary = [
         {"id": e.id, "claim": e.claim, "excerpt": e.excerpt}
         for e in evidence_list[:4]
@@ -160,8 +161,9 @@ async def verify_grounding(
 
     try:
         check_res = await call_llm(prompt, system_prompt=S7_CHECK_SYSTEM, task_type="fast", json_mode=True)
-        if isinstance(check_res, dict):
-            passed_swap_test = check_res.get("passed_swap_test", True)
+        if isinstance(check_res, dict) and isinstance(check_res.get("passed_swap_test"), bool):
+            llm_check_completed = True
+            passed_swap_test = check_res["passed_swap_test"]
             if not passed_swap_test:
                 notes.append(f"Failed swap-test: {check_res.get('swap_test_notes', 'Draft is too generic')}")
             
@@ -197,8 +199,11 @@ async def verify_grounding(
             elif repair_sugg:
                 # Store the model's critique in QA notes for SDR visibility; never overwrite the draft with critique
                 notes.append(f"QA Advisory: {repair_sugg[:200]}")
+        else:
+            notes.append("Automated swap test returned no valid verdict; human review is required.")
     except Exception as e:
         logger.warning(f"S7 LLM check warning: {e}")
+        notes.append("Automated swap test unavailable; human review is required before outreach.")
 
     # Determine final verdict
     verdict = "pass"
@@ -207,7 +212,7 @@ async def verify_grounding(
         verdict = "flagged"
     elif not 90 <= word_count <= 130:
         verdict = "review_recommended"
-    elif not passed_swap_test or len(notes) > 1:
+    elif not llm_check_completed or not passed_swap_test or len(notes) > 1:
         verdict = "pass_with_repair" if draft.quality_verdict == "pass_with_repair" else "review_recommended"
 
     report = QualityReport(

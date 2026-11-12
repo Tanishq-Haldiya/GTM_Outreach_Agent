@@ -95,7 +95,7 @@ class ProblemHypothesis(BaseModel):
     root_cause: Optional[str] = None # operational root cause / volume driver
     workflow_burden: Optional[str] = None # manual steps and internal friction
     automation_fit: Optional[str] = None # how automation and human checkpoints solve it
-    grounding_status: str = "verified" # verified by grounding guard agent
+    grounding_status: str = "pending_review" # verified only after an explicit grounding guard acceptance
     grounding_critique: Optional[str] = None
     fallback_info: Optional[Dict[str, Any]] = None
     owner_function: Optional[str] = None # Functional department owner (e.g. Customer Support/CX, Finance/Accounting, Operations)
