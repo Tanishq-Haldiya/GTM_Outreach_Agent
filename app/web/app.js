@@ -73,9 +73,9 @@ function loadDemoCase(caseId) {
     mercury_qualified: { company: 'Mercury (Finance)' },
     mercury_person: { company: 'Mercury', person: 'Immad Akhund', role: 'Co-founder and CEO' },
     ambiguous_person: { person: 'Alex Smith' },
-    drishti_matiks: { company: 'Matiks', person: 'Drishti Pandita', role: 'Founding Product Led Growth', site: 'matiks.com', industry: 'EdTech / Mobile App' },
-    sudhanshu_matiks: { company: 'Matiks', person: 'Sudhanshu Bhatia', role: 'Founder and CEO', site: 'matiks.com', industry: 'EdTech / Mobile App' },
-    matiks_community: { company: 'Matiks', person: 'Drishti Pandita', role: 'Founding Product Led Growth', site: 'matiks.com', industry: 'EdTech / Mobile App' },
+    drishti_matiks: { person: 'Drishti Pandita' },
+    sudhanshu_matiks: { person: 'Sudhanshu Bhatia' },
+    matiks_community: { person: 'Drishti Pandita' },
     mahalaxmi_employee: { company: 'Mahalaxmi Travels', country: 'India', industry: 'Intercity Logistics & Transport' },
     pedro_brex: { company: 'Brex', person: 'Pedro Franceschi', role: 'Co-founder and CEO', site: 'brex.com', industry: 'FinTech / Corporate Card' },
     brex_compliance: { company: 'Brex', person: 'Pedro Franceschi', role: 'Co-founder and CEO', site: 'brex.com', industry: 'FinTech / Corporate Card' },
@@ -212,6 +212,45 @@ function setStepperStage(stageKey, isCompleted = false) {
   const idx = stageOrder.indexOf(normKey);
   if (idx === -1) return;
 
+  const agentNames = {
+    s0: 'Prospect Resolver (S0)',
+    s1: 'Entity Resolver (S1)',
+    s2: 'Research Swarm (S2)',
+    s3: 'Problem Miner (S3)',
+    s4: 'Ranker & Role-Fit (S4)',
+    s5: 'Solution Architect (S5)',
+    s6: 'Outreach Drafter (S6)',
+    s7: 'Grounding Guard (S7)'
+  };
+  const activeAgentEl = document.getElementById('active-agent-pill');
+  if (activeAgentEl) {
+    if (isCompleted && normKey === 's7') {
+      activeAgentEl.textContent = 'Agent: All Stages Done';
+      activeAgentEl.style.color = '#34d399';
+    } else {
+      activeAgentEl.textContent = `Agent: ${agentNames[normKey] || normKey.toUpperCase()}`;
+      activeAgentEl.style.color = '#38bdf8';
+    }
+  }
+
+  ['s0', 's1', 's2', 's3', 's4', 's5', 's6', 's7'].forEach((s) => {
+    const badge = document.getElementById(`pagent-${s}`);
+    const i = stageOrder.indexOf(s);
+    if (badge) {
+      const statusEl = badge.querySelector('.pagent-status');
+      if (i !== -1 && (i < idx || (i === idx && isCompleted))) {
+        badge.className = 'pipeline-agent-badge completed';
+        if (statusEl) statusEl.textContent = 'Completed';
+      } else if (i === idx) {
+        badge.className = 'pipeline-agent-badge active';
+        if (statusEl) statusEl.textContent = 'Working...';
+      } else {
+        badge.className = 'pipeline-agent-badge';
+        if (statusEl) statusEl.textContent = 'Ready';
+      }
+    }
+  });
+
   stageOrder.forEach((s, i) => {
     const node = document.getElementById(`step-${s}`);
     if (!node) return;
@@ -294,6 +333,19 @@ function resetLiveWorkspace(targetName) {
   if (processGrid) processGrid.innerHTML = '<div class="process-placeholder">Research channels will appear when Stage 2 starts.</div>';
   const usageTotal = document.getElementById('usage-total');
   if (usageTotal) usageTotal.textContent = '0 tokens';
+  const activeAgentEl = document.getElementById('active-agent-pill');
+  if (activeAgentEl) {
+    activeAgentEl.textContent = 'Agent: Initializing';
+    activeAgentEl.style.color = '#38bdf8';
+  }
+  ['s0', 's1', 's2', 's3', 's4', 's5', 's6', 's7'].forEach((s) => {
+    const badge = document.getElementById(`pagent-${s}`);
+    if (badge) {
+      badge.className = 'pipeline-agent-badge';
+      const statusEl = badge.querySelector('.pagent-status');
+      if (statusEl) statusEl.textContent = 'Ready';
+    }
+  });
   const usageBreakdown = document.getElementById('usage-breakdown');
   if (usageBreakdown) usageBreakdown.textContent = 'Successful model calls and token counts will appear here.';
   const grounding = document.getElementById('grounding-work-content');

@@ -1991,6 +1991,24 @@ a:focus-visible {
 .demo-case h4 { margin:9px 0 6px; color:#f4f7fc; font-size:.95rem; }.demo-case p { color:#99a9bf; font-size:.76rem; line-height:1.55; margin:0 0 14px; flex:1; }
 .demo-case button { border:0; padding:0; background:none; color:#8fdccb; font-weight:700; font-size:.75rem; text-align:left; cursor:pointer; }.demo-case button span { float:right; }
 .process-card { margin:18px 0 22px; padding:20px; border:1px solid rgba(116,147,200,.2); background:radial-gradient(ellipse at top left,rgba(46,91,128,.2),transparent 54%),linear-gradient(145deg,#111d30,#0c1423); }
+.pipeline-agent-strip { display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:7px; margin-bottom:14px; }
+.pipeline-agent-badge { padding:9px 10px; border-radius:10px; border:1px solid rgba(148,163,184,.14); background:rgba(6,12,23,.55); display:flex; flex-direction:column; gap:4px; transition:border-color .2s,background .2s,transform .2s; }
+.pipeline-agent-badge .pagent-code { font:700 .62rem 'JetBrains Mono',monospace; color:#38bdf8; letter-spacing:.05em; }
+.pipeline-agent-badge .pagent-info strong { display:block; font-size:.72rem; color:#dbe5f3; line-height:1.2; margin-bottom:2px; }
+.pipeline-agent-badge .pagent-info small { display:block; font-size:.61rem; color:#8698b1; line-height:1.25; }
+.pipeline-agent-badge .pagent-status { margin-top:auto; font-size:.58rem; text-transform:uppercase; letter-spacing:.06em; color:#64748b; font-weight:700; }
+.pipeline-agent-badge.active { border-color:#38bdf8; background:rgba(56,189,248,.12); transform:translateY(-2px); box-shadow:0 0 14px rgba(56,189,248,.2); }
+.pipeline-agent-badge.active .pagent-status { color:#38bdf8; }
+.pipeline-agent-badge.completed { border-color:rgba(52,211,153,.4); background:rgba(16,185,129,.08); }
+.pipeline-agent-badge.completed .pagent-code { color:#34d399; }
+.pipeline-agent-badge.completed .pagent-status { color:#34d399; }
+body.saas-theme .pipeline-agent-badge { background:#fff; border-color:#e3e9eb; }
+body.saas-theme .pipeline-agent-badge .pagent-info strong { color:#263741; }
+body.saas-theme .pipeline-agent-badge .pagent-info small { color:#687b85; }
+body.saas-theme .pipeline-agent-badge.active { background:rgba(14,165,233,.08); border-color:#0284c7; }
+body.saas-theme .pipeline-agent-badge.completed { background:rgba(16,185,129,.06); border-color:rgba(16,185,129,.4); }
+@media(max-width:1100px) { .pipeline-agent-strip { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+@media(max-width:600px) { .pipeline-agent-strip { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 .usage-total { padding:8px 11px; color:#91e4d1; border-radius:10px; background:rgba(33,177,146,.1); font:700 .75rem 'JetBrains Mono',monospace; white-space:nowrap; }
 .process-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px; }
 .process-agent { min-width:0; padding:12px; border:1px solid rgba(148,163,184,.14); background:rgba(6,12,23,.55); border-radius:11px; display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; }

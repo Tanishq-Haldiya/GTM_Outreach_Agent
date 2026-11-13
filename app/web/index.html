@@ -316,7 +316,89 @@
 
         <!-- 2-Column Split: Evidence & Discovery (Left), Solution & Draft (Right) -->
         <section class="card process-card" aria-labelledby="process-title">
-          <div class="process-head"><div><span class="eyebrow">RUN TRANSPARENCY</span><h3 id="process-title">What the agents are doing</h3><p>Live states come from pipeline events. Counts reflect completed work.</p></div><div class="usage-total" id="usage-total">0 tokens</div></div>
+          <div class="process-head">
+            <div>
+              <span class="eyebrow">RUN TRANSPARENCY &amp; AGENT EXECUTION</span>
+              <h3 id="process-title">What the agents are doing</h3>
+              <p>Live states, researcher channels, and autonomous stages driven by pipeline events. Counts reflect verified work completed across each agent boundary.</p>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+              <div class="active-agent-pill" id="active-agent-pill" style="padding:6px 10px;border-radius:8px;background:rgba(56,189,248,0.12);color:#38bdf8;border:1px solid rgba(56,189,248,0.3);font:600 .7rem 'JetBrains Mono',monospace;">Agent: Idle</div>
+              <div class="usage-total" id="usage-total">0 tokens</div>
+            </div>
+          </div>
+
+          <!-- Multi-Agent Stage Pipeline Overview -->
+          <div class="pipeline-agent-strip" id="pipeline-agent-strip">
+            <div class="pipeline-agent-badge" id="pagent-s0">
+              <span class="pagent-code">S0</span>
+              <div class="pagent-info">
+                <strong>Prospect Resolver</strong>
+                <small>Identity &amp; Role Disambiguation</small>
+              </div>
+              <span class="pagent-status">Ready</span>
+            </div>
+            <div class="pipeline-agent-badge" id="pagent-s1">
+              <span class="pagent-code">S1</span>
+              <div class="pagent-info">
+                <strong>Entity Resolver</strong>
+                <small>Company &amp; Domain Verification</small>
+              </div>
+              <span class="pagent-status">Ready</span>
+            </div>
+            <div class="pipeline-agent-badge" id="pagent-s2">
+              <span class="pagent-code">S2</span>
+              <div class="pagent-info">
+                <strong>Research Swarm</strong>
+                <small>Parallel Multi-Channel Fan-out</small>
+              </div>
+              <span class="pagent-status">Ready</span>
+            </div>
+            <div class="pipeline-agent-badge" id="pagent-s3">
+              <span class="pagent-code">S3</span>
+              <div class="pagent-info">
+                <strong>Problem Miner</strong>
+                <small>Direct &amp; Inferred Synthesis</small>
+              </div>
+              <span class="pagent-status">Ready</span>
+            </div>
+            <div class="pipeline-agent-badge" id="pagent-s4">
+              <span class="pagent-code">S4</span>
+              <div class="pagent-info">
+                <strong>Scoring &amp; Role-Fit</strong>
+                <small>Multi-Factor Ranker</small>
+              </div>
+              <span class="pagent-status">Ready</span>
+            </div>
+            <div class="pipeline-agent-badge" id="pagent-s5">
+              <span class="pagent-code">S5</span>
+              <div class="pagent-info">
+                <strong>Solution Architect</strong>
+                <small>Targeted Workflow Design</small>
+              </div>
+              <span class="pagent-status">Ready</span>
+            </div>
+            <div class="pipeline-agent-badge" id="pagent-s6">
+              <span class="pagent-code">S6</span>
+              <div class="pagent-info">
+                <strong>Outreach Drafter</strong>
+                <small>Email &amp; Connection Copy</small>
+              </div>
+              <span class="pagent-status">Ready</span>
+            </div>
+            <div class="pipeline-agent-badge" id="pagent-s7">
+              <span class="pagent-code">S7</span>
+              <div class="pagent-info">
+                <strong>Grounding Guard</strong>
+                <small>Claim QA &amp; Swap-Name Test</small>
+              </div>
+              <span class="pagent-status">Ready</span>
+            </div>
+          </div>
+
+          <div class="process-subhead" style="margin:14px 0 8px;font-size:0.75rem;font-weight:700;color:var(--text);letter-spacing:0.04em;text-transform:uppercase;">
+            <span>Parallel Researcher Channels (Stage 2)</span>
+          </div>
           <div class="process-grid" id="researcher-process-grid"><div class="process-placeholder">Research channels will appear when Stage 2 starts.</div></div>
           <details class="grounding-work"><summary>Grounding Guard work <span id="grounding-summary">Awaiting hypotheses</span></summary><div id="grounding-work-content" class="grounding-work-content"><p>Each discovered problem will show its audit status, reviewer note and supporting evidence references here.</p></div></details>
           <div id="usage-breakdown" class="usage-breakdown" aria-live="polite">Successful model calls and token counts will appear here.</div>
