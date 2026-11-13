@@ -44,25 +44,6 @@ python -m pytest tests/ -v
 
 ---
 
-## 🎬 Demo Playbook & Rate-Limit Safe Recording
-
-To ensure seamless demo presentations and video recordings without worrying about external LLM quota exhaustion or provider rate limits (HTTP 429), all **8 Approach Page Scenarios** have their full execution processes and verified results pre-cached in [`app/demo_cache.json`](./app/demo_cache.json).
-
-### The 8 Cached Scenarios
-
-| Scenario | Mode / Source Lane | Target | Demonstration Focus |
-|---|---|---|---|
-| **1. Ramp** | Core · Company Only | `Ramp` | Automated company resolution, website telemetry, and broad operational friction discovery. |
-| **2. Immad Akhund** | Core · Person Only | `Immad Akhund` | Person-first profile resolution, automatic employer discovery at Mercury, and executive priorities. |
-| **3. Mercury** | Core · Company Collision | `Mercury` | Ambiguity gate when a company has multiple meanings (banking vs chemicals); interactive clarification. |
-| **4. Alex Smith** | Core · Name Ambiguity | `Alex Smith` | Common name ambiguity scoring, presenting candidate profiles to the SDR for confirmation. |
-| **5. Matiks** | Varied · Reddit & Community | `Matiks` | Reverse-chronological Reddit intelligence, end-user mobile app complaints, and live bug reports. |
-| **6. Mahalaxmi Travels** | Varied · Employee Voice | `Mahalaxmi Travels` | Operational voice research, dispatch bottlenecks, and manual ticketing friction (AmbitionBox/Glassdoor). |
-| **7. Brex** | Varied · Regulatory & Compliance | `Brex` | Corporate filings, multi-state sales tax nexus, banking compliance, and financial licenses. |
-| **8. ShipBob** | Varied · Changelogs & Outages | `ShipBob` | Technical signal tracking across API v2 migrations, warehouse deprecations, and incident status logs. |
-
-*(Bonus starting points also pre-cached: **Eric Glyman at Ramp** and **Ramp CFO**).*
-
 ### Cached vs. Fresh Run Toggle Checkbox
 
 Right on the launch form at `http://localhost:8000`, a dedicated toggle switch allows you to choose execution mode:
@@ -103,17 +84,6 @@ The engine executes an 8-stage state machine designed to eliminate wrong-company
 7. **S6 (Grounded Outreach Drafting)**: Generates a 90–130 word email, 2–4 word peer subject line, $< 300$ character LinkedIn note, and internal SDR why-this-hook rationale.
 8. **S7 (QA Gate & Adversarial Swap-The-Name Test)**: Programmatic verification of numbers, word counts, and banned buzzwords, followed by an adversarial LLM swap-the-name test and 1-pass auto-repair.
 9. **S8 (Interactive SDR Review Cockpit)**: Real-time SSE streaming, dynamic evidence filter chips, one-click problem re-selection, and in-place human editing.
-
----
-
-## 📖 Complete Documentation & Rationale
-
-For the exhaustive engineering specification, design rationale behind every stage, rate-limit resilience mechanisms, and post-mortems, see:
-👉 **[DOCUMENTATION.md](./DOCUMENTATION.md)**
-
-Explore the interactive web pages:
-- **Our Approach Playbook**: [`/static/approach.html`](http://localhost:8000/static/approach.html)
-- **Interactive Agent Architecture Map**: [`/static/agent-architecture.html`](http://localhost:8000/static/agent-architecture.html)
 
 ---
 
