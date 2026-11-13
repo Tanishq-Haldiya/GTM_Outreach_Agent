@@ -264,9 +264,10 @@ async def discover_person_candidates(
         )]
 
     # Fast structured LLM extraction pass (JSON mode)
+    # Capping to top 12 snippets keeps prompt size safely under 2,500 tokens, well within Groq's 7,000 ITPM limit
     snippets_text = "\n".join([
         f"- [{s['source_type']}] Title: {s['title']} | Snippet: {s['snippet']} (URL: {s['url']})"
-        for s in raw_snippets[:25]
+        for s in raw_snippets[:12]
     ])
 
     extract_prompt = f"""Target Person to resolve: "{person_name}".
@@ -318,6 +319,8 @@ Return strict JSON:
         )
         items = resp.get("candidates", []) if isinstance(resp, dict) else []
         for it in items:
+            if not it or not isinstance(it, dict):
+                continue
             c_name = it.get("name") or person_name
             c_comp = (it.get("company_raw") or "").strip()
             c_title = (it.get("title_raw") or "").strip()

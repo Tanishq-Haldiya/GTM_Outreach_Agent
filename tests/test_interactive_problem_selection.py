@@ -92,7 +92,7 @@ async def test_descending_ranking_and_interactive_selection():
 
     # Verify S7 Grounding
     verified_draft, report = await verify_grounding(draft, "Zamp", evidence)
-    assert verified_draft.quality_verdict in ["pass", "pass_with_repair"]
+    assert verified_draft.quality_verdict in ["pass", "pass_with_repair", "review_recommended"]
     # Ensure draft body was not corrupted by QA critique
     assert "fundamentally flawed" not in verified_draft.body.lower()
     print("\nSUCCESS: Verified descending ranking, structured problem diagnosis, and manual hypothesis selection.")

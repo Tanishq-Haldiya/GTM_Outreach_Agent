@@ -5,7 +5,12 @@ from typing import Dict, Any, Optional
 from app.models import ProblemHypothesis, EvidenceItem, SolutionSketch, OutreachDraft
 from app.config import DEFAULT_SELLER_CAPABILITY
 from app.llm.router import call_llm
-from app.llm.prompts import S6_DRAFT_SYSTEM, S6_DRAFT_USER_TEMPLATE_DIRECT, S6_DRAFT_USER_TEMPLATE_INFERRED
+from app.llm.prompts import (
+    S6_DRAFT_SYSTEM,
+    S6_DRAFT_USER_TEMPLATE_DIRECT,
+    S6_DRAFT_USER_TEMPLATE_INFERRED,
+    S6_DRAFT_USER_TEMPLATE_REVIEW,
+)
 from app.stages.s2_research import _get_clean_company_name
 from app.stages.topic_alignment import matches_problem_topic
 
@@ -71,6 +76,70 @@ def _build_observable_signal(hook_evidence: EvidenceItem, hypothesis: ProblemHyp
         signal = hook_evidence.claim.strip()
     return signal
 
+
+def _is_usable_problem_statement(problem: str) -> bool:
+    text = (problem or "").strip().casefold()
+    if len(text) < 18 or len(text) > 200:
+        return False
+    headline_markers = (
+        "headline:", "panel", "forum", "keynote", "webinar", "conference",
+        "announces", "finding meaningful connections", "linkedin:", "current role:",
+    )
+    if any(marker in text for marker in headline_markers):
+        return False
+    operational_terms = (
+        "manual", "backlog", "queue", "delay", "delayed", "bottleneck", "workflow",
+        "onboarding", "hiring", "recruit", "support", "ticket", "refund", "billing",
+        "reconcil", "verification", "compliance", "review", "exception", "handoff",
+        "document", "process", "capacity", "restriction", "rejection", "error",
+        "outage", "incident", "transaction", "candidate", "coordination", "fulfillment",
+    )
+    return any(term in text for term in operational_terms)
+
+
+def _build_review_fallback(
+    company_name: str,
+    greeting_name: str,
+    sender_name: str,
+    hypothesis: ProblemHypothesis,
+    hook_evidence: EvidenceItem,
+    recipient_meta: Dict[str, Any],
+    is_problem_usable: bool,
+) -> OutreachDraft:
+    """Keep provider-failure drafts cautious and never turn raw titles into a pain claim."""
+    if is_problem_usable:
+        body = (
+            f"Hi {greeting_name},\n\n"
+            f"A public report about {company_name} mentioned {hypothesis.problem.rstrip(' .')}. I may be missing context, so I don't want to assume it reflects your team's current process. Is this still relevant to the work you oversee?\n\n"
+            f"We build workflow automation for document-heavy operations, with people reviewing exceptions. If this is an area you're exploring, would it be useful to compare notes?\n\n"
+            f"Best,\n{sender_name}"
+        )
+        subject = _fallback_subject(hypothesis.lens)
+        note = "This problem is still awaiting grounding review. The fallback keeps it tentative; verify the source and current relevance before use."
+    else:
+        body = (
+            f"Hi {greeting_name},\n\n"
+            "The available public material does not establish a specific operational problem, so I don't want to assume one or prescribe a workflow. If improving a manual or exception-heavy process is a current priority, would you be open to comparing notes?\n\n"
+            "We build workflow automation for document-heavy operations and keep people involved in exceptions. If that is relevant to your work, I would be glad to share how teams decide where automation fits.\n\n"
+            f"Best,\n{sender_name}"
+        )
+        subject = "A workflow question"
+        note = "Draft held to a neutral, exploratory angle: the cited evidence does not establish an operational problem. Confirm target identity and evidence before use."
+
+    return OutreachDraft(
+        id=f"draft_{uuid.uuid4().hex[:8]}",
+        subject=subject,
+        body=body,
+        linkedin_note=f"Hi {greeting_name}, I'd be glad to connect and compare notes on workflow automation with human review, if that's relevant to your work.",
+        why_this_hook=note,
+        selected_hook_id=hook_evidence.id,
+        claim_map={},
+        version=1,
+        draft_style="review",
+        recipient_fields_used=recipient_meta,
+        person_hook_cited=False,
+    )
+
 async def generate_draft(
     company_name: str,
     hypothesis: ProblemHypothesis,
@@ -116,7 +185,9 @@ async def generate_draft(
 
     # Determine draft style
     is_inferred = hypothesis.layer == "inferred"
-    draft_style = "inferred" if is_inferred else "direct"
+    is_provisional = hypothesis.grounding_status == "provisional" or bool(hypothesis.fallback_info)
+    usable_problem = _is_usable_problem_statement(hypothesis.problem)
+    draft_style = "review" if (is_provisional or not usable_problem) else ("inferred" if is_inferred else "direct")
     is_person_hook = bool(
         getattr(hook_evidence, "about", "company") == "person" or
         getattr(hook_evidence, "source_type", "") == "sdr_provided"
@@ -140,7 +211,38 @@ async def generate_draft(
     hook_ev_text = f"Claim: '{cleaned_claim}' | Excerpt: '{cleaned_excerpt}' (Source: {hook_evidence.url})"
     solution_text = f"Process: {solution.process_name}. What it does: {solution.what_it_automates}. Impact: {solution.impact_direction}."
 
-    if is_inferred:
+    recipient_meta = {
+        "recipient_name": recipient_name,
+        "recipient_title": title_display,
+        "recipient_lens": lens_display,
+        "seniority": seniority_display
+    }
+
+    # A malformed or non-operational candidate should never be rewritten into
+    # confident outreach. Preserve the run for review with a neutral fallback.
+    if is_provisional and not usable_problem:
+        return _build_review_fallback(
+            clean_name, greeting_name, sender_name, hypothesis, hook_evidence, recipient_meta, False
+        )
+
+    if is_provisional:
+        prompt = S6_DRAFT_USER_TEMPLATE_REVIEW.format(
+            company_name=clean_name,
+            recipient_name=greeting_name,
+            recipient_title=title_display,
+            recipient_lens=lens_display,
+            seniority=seniority_display,
+            framing_guidance=framing_display,
+            greeting_target=greeting_target,
+            target_persona=target_persona,
+            problem_statement=hypothesis.problem,
+            hook_evidence=hook_ev_text,
+            solution_sketch=solution_text,
+            seller_offering=seller.get("offering", "workflow automation systems for document-heavy back-office operations"),
+            seller_value_prop=seller.get("value_prop", "reducing manual bottleneck cycle times"),
+            sender_name=sender_name
+        )
+    elif is_inferred:
         # Build the observable signal separately for the inferred template
         class _CleanedEvidence:
             excerpt = cleaned_excerpt
@@ -276,12 +378,11 @@ async def generate_draft(
         logger.warning(f"S6 draft generation error: {e}")
 
     # Fallback template — style-aware
-    recipient_meta = {
-        "recipient_name": recipient_name,
-        "recipient_title": title_display,
-        "recipient_lens": lens_display,
-        "seniority": seniority_display
-    }
+    if is_provisional:
+        return _build_review_fallback(
+            clean_name, greeting_name, sender_name, hypothesis, hook_evidence, recipient_meta, usable_problem
+        )
+
     if is_inferred:
         fallback_signal = observable_signal.strip().rstrip(". ")
         if len(fallback_signal) > 140:
@@ -291,16 +392,16 @@ async def generate_draft(
             f"I noticed a recent signal at {clean_name}: {fallback_signal}.\n\n"
             f"As those operations scale, {hypothesis.problem.lower()} may become harder to manage. "
             f"Is that an area your team is exploring?\n\n"
-            f"We build workflows that {solution.what_it_automates.rstrip('. ')} while keeping human reviewers involved in exceptions. "
-            f"Worth a quick chat to explore if it's relevant?\n\n"
+            "We help teams automate document-heavy workflows while keeping people involved in exceptions. "
+            "Is that worth comparing notes on?\n\n"
             f"Best,\n{sender_name}"
         )
     else:
         problem_text = hypothesis.problem.rstrip(" .")
         fallback_body = (
             f"Hi {greeting_name},\n\n"
-            f"The signal points to a challenge with {problem_text.lower()}.\n\n"
-            f"We build workflows that {solution.what_it_automates.rstrip('. ')}. Would it be useful to compare how your team handles this today?\n\n"
+            f"I came across public reporting related to {problem_text.lower()} and wanted to ask how your team approaches this area today.\n\n"
+            "We help automate document-heavy workflows while keeping people involved in exceptions. Would a brief exchange be useful?\n\n"
             f"Best,\n{sender_name}"
         )
 

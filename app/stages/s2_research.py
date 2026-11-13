@@ -12,6 +12,7 @@ from app.models import EvidenceItem, CompanyIdentity, CompanyProfile
 from app.tools.search import search_web
 from app.tools.fetch import fetch_page_text
 from app.llm.router import call_llm
+from app.config import FAST_RESEARCH_CHANNEL_LIMIT
 from app.llm.prompts import S2_EXTRACT_SYSTEM, S2_EXTRACT_USER_TEMPLATE
 
 logger = logging.getLogger(__name__)
@@ -98,7 +99,7 @@ def compute_source_authority(
 RESEARCHER_CONFIGS = [
     {
         "name": "official_overview",
-        "query": '({domain} OR "{name}") (overview OR business OR operations OR distribution OR platform OR services OR production)',
+        "query": '({domain} OR "{name}") (overview OR business OR operations OR distribution OR platform OR services OR production OR technology OR systems OR software OR ERP OR workflow OR integrations OR tools)',
         "signal": "profile",
         "source_type": "website"
     },
@@ -110,13 +111,7 @@ RESEARCHER_CONFIGS = [
     },
     {
         "name": "customer_reviews_and_friction",
-        "query": '("{name}" OR {domain}) (reviews OR complaints OR "customer support" OR "customer service" OR delays OR billing OR refund OR Trustpilot OR G2)',
-        "signal": "friction",
-        "source_type": "review"
-    },
-    {
-        "name": "app_reviews_and_fulfillment",
-        "query": '("{name}" OR {domain}) (reviews OR complaints OR "turnaround time" OR backlog OR delay OR delivery OR fulfillment OR "poor support" OR refund OR billing OR onboarding OR "downtime")',
+        "query": '("{name}" OR {domain}) (reviews OR complaints OR "customer support" OR "customer service" OR delays OR billing OR refund OR Trustpilot OR G2 OR "turnaround time" OR backlog OR delivery OR fulfillment OR onboarding OR downtime)',
         "signal": "friction",
         "source_type": "review"
     },
@@ -145,22 +140,10 @@ RESEARCHER_CONFIGS = [
         "source_type": "compliance"
     },
     {
-        "name": "systems_and_tools",
-        "query": '({domain} OR "{name}") (technology OR systems OR software OR ERP OR vendor OR workflow OR "tech stack" OR integrations OR cloud OR tools)',
-        "signal": "tool_stack",
-        "source_type": "website"
-    },
-    {
         "name": "news_and_scale",
-        "query": '({domain} OR "{name}") (expansion OR restructuring OR revenue OR earnings OR licensing OR acquisition OR announcement OR growth)',
+        "query": '({domain} OR "{name}") (expansion OR restructuring OR revenue OR earnings OR licensing OR acquisition OR announcement OR growth OR headcount OR scale OR volume OR contracts OR bottlenecks OR "supply chain")',
         "signal": "expansion",
         "source_type": "news"
-    },
-    {
-        "name": "operational_scale_strain",
-        "query": '({domain} OR "{name}") (headcount OR scale OR volume OR compliance OR contracts OR bottlenecks OR "supply chain" OR distribution)',
-        "signal": "operational_strain",
-        "source_type": "website"
     },
     {
         "name": "employee_voice_and_ops",
@@ -300,12 +283,16 @@ def _is_result_relevant_to_entity(r: Dict[str, Any], company: CompanyIdentity) -
     domain_stem = domain.split(".")[0]
     clean_name = _get_clean_company_name(company.name, company.domain).lower()
 
-    # 1. URL strictly contains confirmed domain or its stem
-    if domain in url or f"/{domain_stem}" in url or f"-{domain_stem}" in url:
+    # 1. The confirmed domain is the strongest target anchor. Do not use a
+    # domain stem on its own: a short brand can also be a common word, job, or
+    # product name in an unrelated URL.
+    if domain in url:
         return True
 
-    # 1b. Dedicated community subreddit (e.g. reddit.com/r/matiks)
-    if "reddit.com/r/" in url and (f"/r/{domain_stem}" in url or f"/r/{clean_name}" in url):
+    # 1b. A dedicated community is a target anchor when the subreddit segment
+    # exactly matches the confirmed domain stem, not merely a substring.
+    community_path = f"/r/{domain_stem}/"
+    if "reddit.com" in url and (community_path in f"{url}/" or f"/r/{domain_stem}?" in url):
         return True
 
     # 2. Snippet or title explicitly mentions the confirmed domain
@@ -324,33 +311,62 @@ def _is_result_relevant_to_entity(r: Dict[str, Any], company: CompanyIdentity) -
         if tok in title or tok in snippet:
             has_name_match = True
 
-    if has_name_match:
-        # Check against conflicting industry keywords
-        unrelated_industry_flags = [
-            "racing", "helmets", "solar", "pizza", "restaurant",
-            "hospitality", "construction", "electric utility", "powersports",
-            "automotive parts", "tires"
+    if not has_name_match:
+        return False
+
+    # A one-word name cannot establish identity by itself unless anchored by the URL stem,
+    # or the brand token appears as a distinct word in the title/snippet.
+    if len(name_tokens) == 1:
+        tok = name_tokens[0]
+        has_url_stem_anchor = (
+            len(domain_stem) >= 3 and (
+                f"/{domain_stem}/" in f"{url}/" or
+                f".{domain_stem}." in url or
+                f"-{domain_stem}-" in url or
+                f"/{domain_stem}-" in url or
+                f"-{domain_stem}/" in url or
+                f"id=com.{domain_stem}" in url or
+                f"/{domain_stem}?" in url or
+                url.endswith(f"/{domain_stem}")
+            )
+        )
+        has_title_anchor = bool(re.search(rf"\b{re.escape(tok)}\b", title))
+        if not (has_url_stem_anchor or has_title_anchor):
+            return False
+
+    # Reject generic aggregator landing pages and lead-gen ad copy. This is a
+    # source-quality check, independent of any particular company or industry.
+    if any(agg in url for agg in AGGREGATOR_DOMAINS):
+        agg_ad_flags = [
+            "boost outreach", "ai-writer", "connect smarter", "messages' ai-writer",
+            "find email", "phone number", "pricing plans", "get contact info",
+            "sign up for free", "try for free"
         ]
-        comp_ind = (company.industry or "").lower()
-        if any(flag in title or flag in url or flag in snippet for flag in unrelated_industry_flags if flag not in comp_ind):
+        if any(flag in snippet for flag in agg_ad_flags):
             return False
-            
-        # Reject generic aggregator landing pages and lead-gen ad copy
-        if any(agg in url for agg in AGGREGATOR_DOMAINS):
-            agg_ad_flags = [
-                "boost outreach", "ai-writer", "connect smarter", "messages' ai-writer",
-                "find email", "phone number", "pricing plans", "get contact info",
-                "sign up for free", "try for free"
-            ]
-            if any(flag in snippet for flag in agg_ad_flags):
-                return False
 
-        if any(bad in url for bad in ["yellowpages.com", "manta.com"]):
-            return False
-            
-        return True
+    if any(bad in url for bad in ["yellowpages.com", "manta.com"]):
+        return False
 
-    return False
+    return True
+
+def _sanitize_raw_snippet(text: str) -> str:
+    """Strip UI chrome, reviewer counts, action buttons, and promo hashtags from raw search snippets."""
+    if not text:
+        return ""
+    # Strip Play Store / review UI noise
+    text = re.sub(r"\b\d+\s+people found this review helpful\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bFlag inappropriate\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}\b", "", text, flags=re.IGNORECASE)
+    # Strip social / YouTube promo boilerplate
+    text = re.sub(r"🔔\s*Subscribe for daily updates[^\n.]*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"#\w+", "", text)
+    # Strip Tavily markdown ID dumps
+    text = re.sub(r"#\s*[\w\s]+\s+ID:\s*[\w]+\s+Website:[^\n]*\s+Legal name:[^\n]*", "", text, flags=re.IGNORECASE)
+    # Collapse multiple spaces and newlines
+    text = re.sub(r"[\r\n]+", " ", text)
+    text = re.sub(r"\s{2,}", " ", text)
+    return text.strip()
 
 def _is_evidence_claim_valid(claim: str, excerpt: str, company: CompanyIdentity, url: Optional[str] = None) -> bool:
     """
@@ -387,33 +403,59 @@ def _is_evidence_claim_valid(claim: str, excerpt: str, company: CompanyIdentity,
     bad_phrases = [
         "boost outreach with", "ai-writer to help", "connect smarter and faster",
         "find email addresses", "phone numbers and email", "free trial",
-        "sign up for free", "pricing plans", "get contact info"
+        "sign up for free", "pricing plans", "get contact info",
+        "subscribe for daily updates", "no resume shortlisting", "off-campus drives",
+        "click to subscribe", "subscribe to our channel"
     ]
     if any(phrase in claim_lower or phrase in excerpt_lower for phrase in bad_phrases):
         logger.info(f"Guardrail rejected claim with generic outreach ad phrase: {claim}")
         return False
 
-    # 3. Grounding anchor: At least one token of company name or domain stem or industry must appear,
-    # OR the source URL is explicitly verified to belong to the company/its community
+    # 3. Grounding anchor. A confirmed domain (including a review path carrying
+    # it) or an exact dedicated community establishes identity. Multi-word
+    # company names may also establish identity through their name tokens.
+    # A single-word name is anchored if the URL carries the domain stem,
+    # or the clean brand token appears explicitly as a word in the claim/excerpt.
     clean_name = _get_clean_company_name(company.name, company.domain).lower()
     tokens = [tok for tok in clean_name.split() if len(tok) >= 3]
-    domain_stem = company.domain.split(".")[0]
+    domain_stem = company.domain.split(".")[0].lower()
 
     url_anchored = False
     if url:
         url_lower = url.lower()
-        if (
-            company.domain.lower() in url_lower or
-            domain_stem in url_lower or
-            any(tok in url_lower for tok in tokens)
-        ):
+        is_exact_community = (
+            "reddit.com" in url_lower and
+            (f"/r/{domain_stem}/" in f"{url_lower}/" or f"/r/{domain_stem}?" in url_lower)
+        )
+        has_domain_stem_in_url = (
+            len(domain_stem) >= 3 and (
+                f"/{domain_stem}/" in f"{url_lower}/" or
+                f".{domain_stem}." in url_lower or
+                f"-{domain_stem}-" in url_lower or
+                f"/{domain_stem}-" in url_lower or
+                f"-{domain_stem}/" in url_lower or
+                f"id=com.{domain_stem}" in url_lower or
+                f"/{domain_stem}?" in url_lower or
+                f"={domain_stem}&" in url_lower or
+                url_lower.endswith(f"/{domain_stem}")
+            )
+        )
+        if company.domain.lower() in url_lower or is_exact_community or has_domain_stem_in_url:
             url_anchored = True
 
+    multiword_name_anchored = (
+        len(tokens) >= 2 and
+        all(tok in claim_lower or tok in excerpt_lower for tok in tokens[:2])
+    )
+    singleword_name_anchored = (
+        len(tokens) == 1 and
+        bool(re.search(rf"\b{re.escape(tokens[0])}\b", f"{claim_lower} {excerpt_lower}"))
+    )
     has_anchor = (
         url_anchored or
-        domain_stem in claim_lower or domain_stem in excerpt_lower or
-        any(tok in claim_lower or tok in excerpt_lower for tok in tokens) or
-        (company.industry and any(ind_w in claim_lower for ind_w in company.industry.lower().split() if len(ind_w) > 4))
+        company.domain.lower() in claim_lower or company.domain.lower() in excerpt_lower or
+        multiword_name_anchored or
+        singleword_name_anchored
     )
     if not has_anchor:
         logger.info(f"Guardrail rejected unanchored evidence claim: {claim}")
@@ -470,9 +512,11 @@ Output strictly in JSON:
     }}
   ]
 }}"""
-        extracted = await asyncio.wait_for(
-            call_llm(prompt, system_prompt="You are an enterprise research analyst extracting Tier A facts from official website copy.", task_type="fast", json_mode=True),
-            timeout=22.0
+        extracted = await call_llm(
+            prompt,
+            system_prompt="You are an enterprise research analyst extracting Tier A facts from official website copy.",
+            task_type="large_context",
+            json_mode=True
         )
         if isinstance(extracted, dict) and "evidence" in extracted:
             for ev in extracted["evidence"]:
@@ -481,8 +525,8 @@ Output strictly in JSON:
                 if not claim:
                     continue
 
-                # Enforce evidence claim guardrail
-                if not _is_evidence_claim_valid(claim, excerpt, company):
+                # Enforce evidence claim guardrail with confirmed URL
+                if not _is_evidence_claim_valid(claim, excerpt, company, url=url):
                     continue
 
                 item = EvidenceItem(
@@ -532,8 +576,11 @@ async def _run_single_researcher(
 
         # Format snippets for LLM extraction
         snippets = []
-        for r in relevant_results:
-            text = f"Title: {r.get('title')}\nURL: {r.get('url')}\nDate: {r.get('published_date')}\nSnippet: {r.get('snippet')}"
+        for r in relevant_results[:max_results]:
+            # Compact source windows are sufficient for factual extraction and
+            # protect per-minute token budgets during a fan-out.
+            snippet = (r.get('snippet') or '')[:(600 if max_results > 4 else 360)]
+            text = f"Title: {(r.get('title') or '')[:180]}\nURL: {r.get('url')}\nDate: {r.get('published_date')}\nSnippet: {snippet}"
             snippets.append(text)
         snippets_combined = "\n---\n".join(snippets)
 
@@ -547,10 +594,7 @@ async def _run_single_researcher(
 
         extracted = None
         try:
-            extracted = await asyncio.wait_for(
-                call_llm(prompt, system_prompt=S2_EXTRACT_SYSTEM, task_type="large_context", json_mode=True),
-                timeout=20.0
-            )
+            extracted = await call_llm(prompt, system_prompt=S2_EXTRACT_SYSTEM, task_type="large_context", json_mode=True)
         except Exception as extract_err:
             logger.warning(f"Researcher '{cfg['name']}' LLM extraction failed ({extract_err}); falling back to direct snippet extraction.")
 
@@ -595,10 +639,11 @@ async def _run_single_researcher(
         if not items and relevant_results:
             logger.info(f"Researcher '{cfg['name']}': Generating evidence items directly from {len(relevant_results[:2])} top verified snippets.")
             for r in relevant_results[:2]:
-                snip = (r.get("snippet") or "").strip()
+                snip = _sanitize_raw_snippet((r.get("snippet") or "").strip())
                 if not snip or len(snip) < 20:
                     continue
-                claim = f"{clean_name}: {snip[:160]}"
+                # Preserve clean, sanitized wording.
+                claim = snip[:160]
                 excerpt = snip[:300]
                 r_url = r.get("url") or f"https://{company.domain}"
                 if not _is_evidence_claim_valid(claim, excerpt, company, url=r_url):
@@ -623,6 +668,102 @@ async def _run_single_researcher(
     except Exception as e:
         logger.warning(f"Researcher '{cfg['name']}' unhandled exception: {e}")
 
+    return items
+
+
+async def _run_batched_researchers(
+    configs: List[Dict[str, str]],
+    company: CompanyIdentity,
+    on_evidence_found: Optional[Callable[[EvidenceItem], Any]] = None,
+    max_results: int = 4,
+) -> List[EvidenceItem]:
+    """Search specialist channels independently, then extract all evidence in one LLM call."""
+    clean_name = _get_clean_company_name(company.name, company.domain)
+    search_results = await asyncio.gather(*[
+        search_web(cfg["query"].format(domain=company.domain, name=clean_name), max_results=max_results)
+        for cfg in configs
+    ], return_exceptions=True)
+
+    source_rows: Dict[str, tuple] = {}
+    prompt_rows = []
+    for cfg, results in zip(configs, search_results):
+        if isinstance(results, Exception):
+            logger.warning("Research channel '%s' search failed: %s", cfg["name"], results)
+            continue
+        relevant = [r for r in (results or []) if _is_result_relevant_to_entity(r, company)]
+        for result in relevant[:max_results]:
+            source_id = f"src_{len(source_rows) + 1}"
+            source_rows[source_id] = (cfg, result)
+            prompt_rows.append({
+                "source_id": source_id,
+                "channel": cfg["name"],
+                "title": (result.get("title") or "")[:150],
+                "url": result.get("url") or "",
+                "date": result.get("published_date"),
+                "snippet": (result.get("snippet") or "")[:360],
+            })
+
+    if not prompt_rows:
+        return []
+
+    prompt = (
+        f"Target company: {company.name} ({company.domain})\n"
+        f"Industry: {company.industry or 'Business'}\n"
+        "Extract concise, verifiable facts from these search results. Return at most one evidence item per source. "
+        "Include source_id exactly as given and copy a short verbatim excerpt. Do not infer problems or combine sources. "
+        "Skip irrelevant, ambiguous, third-party, or unsupported results.\n\n"
+        f"Sources:\n{json.dumps(prompt_rows, ensure_ascii=False)}\n\n"
+        'Return JSON: {"evidence":[{"source_id":"src_1","claim":"...","excerpt":"...","signal_type":"profile|manual_process|tool_stack|expansion|friction|outage_downtime|migration_sunset|leadership_priority|compliance_risk","reliability_tier":"A|B|C","published_date":null}]}'
+    )
+    try:
+        extracted = await call_llm(prompt, system_prompt=S2_EXTRACT_SYSTEM, task_type="large_context", json_mode=True)
+    except Exception as exc:
+        logger.warning("Batched researcher extraction failed; using source snippets: %s", exc)
+        extracted = {}
+
+    items: List[EvidenceItem] = []
+    seen_sources = set()
+    for row in (extracted.get("evidence", []) if isinstance(extracted, dict) else []):
+        source_id = row.get("source_id")
+        if source_id not in source_rows:
+            continue
+        cfg, result = source_rows[source_id]
+        claim = str(row.get("claim") or "").strip()
+        excerpt = str(row.get("excerpt") or "").strip()[:300]
+        url = str(result.get("url") or "")
+        if not claim or not excerpt or not _is_evidence_claim_valid(claim, excerpt, company, url=url):
+            continue
+        ev = EvidenceItem(
+            id=f"ev_{uuid.uuid4().hex[:8]}", researcher=cfg["name"], source_type=cfg["source_type"],
+            url=url, title=str(result.get("title") or "")[:200], claim=claim, excerpt=excerpt,
+            signal_type=str(row.get("signal_type") or cfg["signal"]),
+            reliability_tier=str(row.get("reliability_tier") or "B"),
+            authority_score=compute_source_authority(url, cfg["source_type"], str(row.get("reliability_tier") or "B"), excerpt, company.domain, signal_type=str(row.get("signal_type") or cfg["signal"])),
+            published_date=row.get("published_date") or result.get("published_date"),
+        )
+        items.append(ev)
+        seen_sources.add(source_id)
+
+    # If the model is unavailable or omits a result, retain only a few source
+    # snippets as explicitly sourced evidence; downstream guards still apply.
+    for source_id, (cfg, result) in source_rows.items():
+        if source_id in seen_sources:
+            continue
+        snippet = _sanitize_raw_snippet(str(result.get("snippet") or "").strip())
+        url = str(result.get("url") or "")
+        claim = snippet[:160]
+        if len(snippet) < 30 or not _is_evidence_claim_valid(claim, snippet[:300], company, url=url):
+            continue
+        items.append(EvidenceItem(
+            id=f"ev_{uuid.uuid4().hex[:8]}", researcher=cfg["name"], source_type=cfg["source_type"],
+            url=url, title=str(result.get("title") or f"{company.name} Research Signal")[:200],
+            claim=claim, excerpt=snippet[:300], signal_type=cfg["signal"], reliability_tier="B",
+            authority_score=compute_source_authority(url, cfg["source_type"], "B", snippet, company.domain, signal_type=cfg["signal"]),
+            published_date=result.get("published_date"),
+        ))
+    if on_evidence_found:
+        for item in items:
+            await on_evidence_found(item)
     return items
 
 async def _run_reddit_chronological_agent(
@@ -709,14 +850,11 @@ Output strictly in JSON:
 }}"""
 
     try:
-        res = await asyncio.wait_for(
-            call_llm(
-                prompt,
-                system_prompt="You are an objective community intelligence agent analyzing recent Reddit posts in reverse chronological order to identify authentic operational friction.",
-                task_type="large_context",
-                json_mode=True
-            ),
-            timeout=22.0
+        res = await call_llm(
+            prompt,
+            system_prompt="You are an objective community intelligence agent analyzing recent Reddit posts in reverse chronological order to identify authentic operational friction.",
+            task_type="large_context",
+            json_mode=True
         )
         if isinstance(res, dict) and "observations" in res:
             for obs in res["observations"]:
@@ -1012,6 +1150,7 @@ async def execute_research_fanout(
     on_evidence_found: Optional[Callable[[EvidenceItem], Any]] = None,
     person_profile: Optional[Any] = None,
     mode: str = "fast",
+    on_researcher_event: Optional[Callable[[str, str, int, float], Any]] = None,
 ) -> List[EvidenceItem]:
     """
     Executes parallel research strictly anchored to the confirmed domain.
@@ -1019,26 +1158,61 @@ async def execute_research_fanout(
     Uses concurrency throttling (Semaphore) to prevent LLM quota / rate limit exhaustion.
     Then audits all candidates through the Evidence Relevance Guard Agent.
     """
-    sem = asyncio.Semaphore(3)
-    result_limit = 12 if mode == "deep" else 8
+    sem = asyncio.Semaphore(1)
+    result_limit = 8 if mode == "deep" else 4
 
     async def _throttled_researcher(cfg):
+        started = time.monotonic()
+        if on_researcher_event:
+            await on_researcher_event(cfg["name"], "queued", 0, 0.0)
         async with sem:
-            await asyncio.sleep(0.1) # Gentle staggering
-            return await _run_single_researcher(cfg, company, on_evidence_found, max_results=result_limit)
+            if on_researcher_event:
+                await on_researcher_event(cfg["name"], "running", 0, 0.0)
+            try:
+                result = await _run_single_researcher(cfg, company, on_evidence_found, max_results=result_limit)
+                return result
+            finally:
+                if on_researcher_event:
+                    await on_researcher_event(cfg["name"], "completed", len(locals().get("result", [])), time.monotonic() - started)
 
-    async def _throttled_call(factory):
+    async def _throttled_call(label, factory):
+        started = time.monotonic()
+        if on_researcher_event:
+            await on_researcher_event(label, "queued", 0, 0.0)
         async with sem:
-            await asyncio.sleep(0.1)
-            return await factory()
+            if on_researcher_event:
+                await on_researcher_event(label, "running", 0, 0.0)
+            result = []
+            try:
+                result = await factory()
+                return result
+            finally:
+                if on_researcher_event:
+                    await on_researcher_event(label, "completed", len(result) if isinstance(result, list) else 0, time.monotonic() - started)
 
-    crawl_task = _throttled_call(lambda: _crawl_official_website(company, on_evidence_found))
-    reddit_task = _throttled_call(lambda: _run_reddit_chronological_agent(company, on_evidence_found=on_evidence_found))
-    researcher_tasks = [_throttled_researcher(cfg) for cfg in RESEARCHER_CONFIGS]
+    crawl_task = _throttled_call("official_website_crawl", lambda: _crawl_official_website(company, on_evidence_found))
+    reddit_task = _throttled_call("reddit_community_search", lambda: _run_reddit_chronological_agent(company, on_evidence_found=on_evidence_found))
+    # A fast run is designed to finish within modest free-tier model budgets.
+    # The selected channels cover first-party context, hiring/scale, customer
+    # friction, and compliance. Deep mode retains the full specialist fan-out.
+    fast_channel_names = {
+        "hiring_and_operations", "customer_reviews_and_friction",
+        "compliance_and_regulatory", "news_and_scale",
+    }
+    selected_configs = RESEARCHER_CONFIGS if mode == "deep" else [
+        cfg for cfg in RESEARCHER_CONFIGS if cfg["name"] in fast_channel_names
+    ][:FAST_RESEARCH_CHANNEL_LIMIT]
+    if mode == "deep":
+        researcher_tasks = [_throttled_researcher(cfg) for cfg in selected_configs]
+    else:
+        researcher_tasks = [_throttled_call(
+            "batched_specialist_research",
+            lambda: _run_batched_researchers(selected_configs, company, on_evidence_found, result_limit),
+        )]
 
     tasks = [crawl_task, reddit_task] + researcher_tasks
     if person_profile:
-        tasks.append(_throttled_call(lambda: _run_person_voice_channel(person_profile, company, on_evidence_found)))
+        tasks.append(_throttled_call("person_voice_search", lambda: _run_person_voice_channel(person_profile, company, on_evidence_found)))
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
     all_evidence: List[EvidenceItem] = []

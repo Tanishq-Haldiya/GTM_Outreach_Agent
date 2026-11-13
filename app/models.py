@@ -213,6 +213,8 @@ class RunCreate(BaseModel):
     context: Optional[List[Dict[str, Any]]] = None # Optional pasted snippets
     sdr_context: Optional[List[Dict[str, Any]]] = None # Alias for context
     mode: str = "fast" # fast or deep; other legacy values follow fast behavior
+    use_cache: bool = True # replay cached results & processes for rate-limit safe demos
+    demo_case: Optional[str] = None # explicit scenario identifier (e.g. ramp_company)
 
 class ClarifyRequest(BaseModel):
     selected_domain: Optional[str] = None # if user picks a candidate card

@@ -28,16 +28,16 @@ def _evidence_prompt_record(evidence: EvidenceItem) -> Dict[str, Any]:
         "id": evidence.id,
         "researcher": evidence.researcher,
         "source_type": evidence.source_type,
-        "claim": _clip_prompt_text(evidence.claim, 220),
-        "excerpt": _clip_prompt_text(evidence.excerpt, 320),
+        "claim": _clip_prompt_text(evidence.claim, 140),
+        "excerpt": _clip_prompt_text(evidence.excerpt, 180),
         "signal": evidence.signal_type,
-        "url": _clip_prompt_text(evidence.url, 180),
+        "url": _clip_prompt_text(evidence.url, 110),
     }
 
 
 def _compact_evidence_for_prompt(
     evidence: List[EvidenceItem],
-    max_items: int = 14,
+    max_items: int = 7,
 ) -> List[Dict[str, Any]]:
     """Bound S3 prompt size while retaining high-authority, recent evidence."""
     tier_weight = {"A": 4, "B": 3, "C": 2, "S": 1}
@@ -147,6 +147,99 @@ def _is_hypothesis_grounded_and_realistic(hyp: ProblemHypothesis, company: Compa
     return True
 
 
+_EXPLICIT_FRICTION_PHRASES = (
+    "not working", "not received", "not delivered", "not loading", "service unavailable",
+    "service disruption", "degraded service", "system outage", "outage", "downtime",
+    "keeps crashing", "keeps failing", "failed", "failure", "broken", "delayed",
+    "long wait", "waited for", "no response", "never responded", "unresolved",
+    "unable to", "cannot access", "could not access", "can't access", "couldn't",
+    "missing", "refund", "charged twice", "billing error", "fraud", "error message",
+    "complaint", "complained", "poor service", "terrible service", "locked out",
+    "rejected", "canceled", "cancelled", "duplicate charge", "incorrectly charged",
+    "unresponsive", "frustration", "frustrated", "unhappy", "difficult to reach",
+    "does not work", "did not work", "not work", "same how to", "late to",
+    "unexpected fee", "unexpected fees", "low credit limit", "credit limit",
+)
+
+_EXPANDED_FRICTION_PHRASES = (
+    "no reply", "no answer", "no update", "no mail", "no email",
+    "never received", "didn't receive", "did not receive", "haven't received", "hasn't received",
+    "never arrived", "not arrived", "slow response", "slow support", "support was slow",
+    "took days", "took weeks", "took months", "sync error", "sync issue", "syncing error",
+    "export error", "csv error", "api error", "glitch", "glitches",
+    "manual review", "manual backlog", "dispute", "chargeback", "overcharge", "overcharged",
+    "double charge", "charged multiple times", "account suspended", "verification pending",
+    "ticket backlog", "support backlog", "queue backlog", "headache", "time-consuming",
+    "delivery delay", "shipping delay", "shipment delayed", "fulfillment delay",
+)
+
+_EXPLICIT_FRICTION_PATTERNS = [
+    # Natural delay/waiting variations: e.g. "support took five days", "took 3 weeks", "waited 4 days"
+    re.compile(r'\b(?:took|waited|waiting|delay(?:ed)?\s+of)\s+(?:\w+\s+)?(?:days?|weeks?|months?|hours?)\b', re.I),
+    # Common support communication gaps: "no reply", "no answer", "no update", "no mail", "never replied"
+    re.compile(r'\b(?:no|never|didn\'t|did not|hasn\'t|haven\'t)\s+(?:reply|replied|response|respond|responded|answer|update|mail|email|received|deliver(?:ed)?)\b', re.I),
+    # Difficult to reach / unresponsive
+    re.compile(r'\b(?:difficult|hard|unable|impossible)\s+to\s+(?:reach|contact|get\s+hold\s+of|resolve)\b', re.I),
+    # Errors and sync/integration issues: "sync error", "export failed", "csv error", "manual backlog"
+    re.compile(r'\b(?:sync(?:ing)?|integration|export|import|csv|api|billing|payment|webhook)\s+(?:error|issue|problem|bug|fail(?:ed|ure)?|glitch|lag|backlog)\b', re.I),
+    # Support bottleneck phrases: "support backlog", "ticket queue", "slow support"
+    re.compile(r'\b(?:support|ticket|queue)\s+(?:backlog|delay|slow|unresponsive|ignored|stalled)\b', re.I),
+]
+
+
+def _has_explicit_operational_friction(item: EvidenceItem) -> bool:
+    text = f"{item.claim or ''} {item.excerpt or ''}".casefold()
+    if any(phrase in text for phrase in _EXPLICIT_FRICTION_PHRASES):
+        return True
+    if any(phrase in text for phrase in _EXPANDED_FRICTION_PHRASES):
+        return True
+    if any(pat.search(text) for pat in _EXPLICIT_FRICTION_PATTERNS):
+        return True
+    # If the source or signal type was already classified as friction/complaint, match common friction roots
+    src = (item.source_type or "").lower()
+    sig = (item.signal_type or "").lower()
+    if any(s in src for s in ["review", "reddit", "community"]) or any(s in sig for s in ["complaint", "friction", "outage_downtime", "user_complaint"]):
+        # Exclude positive compound words containing 'problem' (e.g. 'problem-solving', 'problem solver')
+        cleaned_text = re.sub(r"\bproblem[\s-]solv\w*", "", text, flags=re.IGNORECASE)
+        friction_tokens = ["slow", "delay", "issue", "problem", "error", "bug", "stuck", "wait", "fail", "terrible", "bad", "poor", "pain", "annoy", "frustrat", "complaint", "broken"]
+        if any(re.search(rf"\b{re.escape(tok)}", cleaned_text) for tok in friction_tokens):
+            return True
+    return False
+
+
+def _evidence_matches_target(item: EvidenceItem, company: CompanyIdentity) -> bool:
+    text = f"{item.title or ''} {item.claim or ''} {item.excerpt or ''}".casefold()
+    url = (item.url or "").casefold()
+    domain = (company.domain or "").casefold().strip().removeprefix("www.")
+    if domain and (domain in url or domain in text):
+        return True
+    domain_stem = domain.split(".")[0] if domain else ""
+    if len(domain_stem) >= 3 and re.search(rf"\b{re.escape(domain_stem)}\b", text):
+        return True
+
+    # Domainless social and review evidence must name the target explicitly.
+    # Avoid matching only a person's first or last name as company context.
+    target_name = re.sub(r"[^a-z0-9 ]+", " ", company.name.casefold()).strip()
+    target_name = re.sub(r"\s+", " ", target_name)
+    if len(target_name) >= 3 and len(target_name) <= 100 and target_name in re.sub(r"\s+", " ", text):
+        return True
+
+    from app.stages.s2_research import _get_clean_company_name
+    clean_name = _get_clean_company_name(company.name, company.domain).casefold()
+    if clean_name and len(clean_name) >= 3 and re.search(rf"\b{re.escape(clean_name)}\b", text):
+        return True
+    return False
+
+
+def _has_direct_support(hypothesis: ProblemHypothesis, evidence_map: Dict[str, EvidenceItem], company: CompanyIdentity) -> bool:
+    return any(
+        evidence_id in evidence_map
+        and _has_explicit_operational_friction(evidence_map[evidence_id])
+        and _evidence_matches_target(evidence_map[evidence_id], company)
+        for evidence_id in hypothesis.evidence_ids
+    )
+
+
 def _build_inferred_signal_fallback(
     company: CompanyIdentity,
     evidence: List[EvidenceItem],
@@ -233,12 +326,6 @@ def _build_direct_evidence_fallback(
         "complaint", "outage_downtime", "status_incident", "user_complaint",
         "bug_report", "dissatisfaction",
     }
-    complaint_terms = (
-        "not working", "not received", "not delivered", "failed", "failure", "broken",
-        "delay", "delayed", "slow", "poor service", "terrible", "refund", "charged",
-        "fraud", "error", "issue", "complaint", "complain", "unable to", "cannot",
-        "can't", "missing", "long wait", "unresolved", "stuck",
-    )
     direct_sources = {"review", "reviews", "reddit", "community", "statuspage", "status_incident", "incident_report", "play_store", "app_store"}
 
     candidates = []
@@ -246,14 +333,36 @@ def _build_direct_evidence_fallback(
         text = f"{item.claim or ''} {item.excerpt or ''}".lower()
         source_type = (item.source_type or "").lower()
         signal = (item.signal_type or "").lower()
-        has_explicit_friction = any(term in text for term in complaint_terms)
+        has_explicit_friction = _has_explicit_operational_friction(item)
         has_direct_signal = any(marker in signal for marker in direct_signals)
-        if not (has_direct_signal or (source_type in direct_sources and has_explicit_friction)):
+        if not has_explicit_friction or not _evidence_matches_target(item, company):
             continue
+        if not (has_direct_signal or source_type in direct_sources):
+            continue
+
+        raw_problem_text = item.claim or item.excerpt
+        from app.stages.s2_research import _sanitize_raw_snippet
+        clean_raw = _sanitize_raw_snippet(raw_problem_text)
+        normalized_text = f"{clean_raw} {item.excerpt or ''}".casefold()
+        if any(term in normalized_text for term in ("unresponsive", "difficult to reach", "does not work", "did not work", "same how to")):
+            problem_text = "Customers report support interactions that do not resolve urgent account issues."
+        elif any(term in normalized_text for term in ("unexpected fee", "unexpected fees", "platform fee", "charged twice", "billing error")):
+            problem_text = "Customers report unexpected fees or billing issues without clear prior communication."
+        elif any(term in normalized_text for term in ("low credit limit", "credit limit")):
+            problem_text = "Customers report credit limits that do not match their operating spend needs."
+        else:
+            sentences = re.split(r"(?<=[.!?])\s+", clean_raw.strip())
+            friction_sentence = next((sentence for sentence in sentences if any(phrase in sentence.casefold() for phrase in _EXPLICIT_FRICTION_PHRASES) or any(phrase in sentence.casefold() for phrase in _EXPANDED_FRICTION_PHRASES)), None)
+            if friction_sentence:
+                problem_text = friction_sentence
+            elif clean_raw and len(clean_raw) < 120 and any(w in clean_raw.lower() for w in ["delay", "slow", "error", "bug", "issue", "crash", "stuck"]):
+                problem_text = clean_raw
+            else:
+                problem_text = f"Customer reviews report recurring operational friction in service delivery and account responsiveness at {company.name}."
 
         hypothesis = ProblemHypothesis(
             id=f"hyp_direct_review_{uuid.uuid4().hex[:8]}",
-            problem=_clip_prompt_text(item.claim or item.excerpt, 280),
+            problem=_clip_prompt_text(problem_text, 200),
             lens="customer_support" if any(term in text for term in ("support", "ticket", "response", "refund")) else "operations",
             lens_explanation="A direct complaint or incident signal surfaced while the language model providers were unavailable.",
             layer="stated",
@@ -439,7 +548,11 @@ async def discover_problems(
     3. Runs the result through the Hypothesis Grounding Guard Agent for rigorous verification.
     """
     source_verified_evidence = [
-        e for e in evidence if _is_evidence_claim_valid(e.claim, e.excerpt, company)
+        # Preserve the source URL during the grounding audit. For ambiguous
+        # one-word company names, the confirmed domain or dedicated review/
+        # community path is the strongest entity anchor; dropping the URL here
+        # incorrectly rejects valid review evidence before S3 can inspect it.
+        e for e in evidence if _is_evidence_claim_valid(e.claim, e.excerpt, company, url=e.url)
     ]
     source_verified_ids = {item.id for item in source_verified_evidence}
     clean_evidence = source_verified_evidence
@@ -467,11 +580,9 @@ async def discover_problems(
         if (has_phone or is_contact_phrase) and not any(ds in src for ds in ["review", "reddit", "community"]):
             continue
 
-        if any(ds in src for ds in ["review", "reddit", "community", "statuspage", "incident_report", "play_store", "app_store"]):
-            direct_candidates.append(evidence_item)
-        elif any(ds in sig for ds in ["complaint", "outage_downtime", "status_incident", "user_complaint"]):
-            direct_candidates.append(evidence_item)
-        elif any(w in exc for w in ["worst", "poor service", "not working", "broken", "failed", "charged", "delay", "fraud", "cancelled", "terrible", "refund not"]):
+        source_looks_direct = any(ds in src for ds in ["review", "reddit", "community", "statuspage", "incident_report", "play_store", "app_store"])
+        signal_looks_direct = any(ds in sig for ds in ["complaint", "outage_downtime", "status_incident", "user_complaint"])
+        if (source_looks_direct or signal_looks_direct) and _has_explicit_operational_friction(evidence_item) and _evidence_matches_target(evidence_item, company):
             direct_candidates.append(evidence_item)
 
     direct_candidates_payload = _compact_evidence_for_prompt(direct_candidates)
@@ -554,8 +665,14 @@ Output strictly in JSON:
                         automation_fit=item.get("automation_fit", ""),
                         rationale=item.get("rationale", "Directly stated in customer/community evidence.")
                     )
-                    if _is_hypothesis_grounded_and_realistic(hyp, company):
+                    if _has_direct_support(hyp, evidence_lookup, company) and _is_hypothesis_grounded_and_realistic(hyp, company):
                         all_hypotheses.append(hyp)
+            # A valid empty model response must not hide explicit complaint
+            # evidence. Surface source-linked candidates for human review when
+            # the model declines to formulate them; the same deterministic
+            # friction and target checks still apply.
+            if not all_hypotheses and direct_candidates:
+                all_hypotheses.extend(_build_direct_evidence_fallback(company, direct_candidates))
         except Exception as e:
             logger.warning(f"Tier 1 direct problem discovery warning: {e}")
             verified_direct_candidates = [
@@ -685,7 +802,8 @@ Output strictly in JSON:
     # Preserve a useful, clearly provisional inferred hypothesis when verified
     # growth evidence exists but model output or the strict audit removed every
     # inference. Never synthesize one without a matching source item.
-    if not any(
+    has_direct_problem = any(h.layer == "stated" for h in result_hypotheses)
+    if not has_direct_problem and not any(
         h.layer == "inferred" or "inferred" in (h.category_label or "").lower()
         for h in result_hypotheses
     ):

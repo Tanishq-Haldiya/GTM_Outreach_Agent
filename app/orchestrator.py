@@ -24,6 +24,7 @@ from app.stages.s4_score import score_and_select_hypothesis
 from app.stages.s5_solution import design_solution
 from app.stages.s6_draft import generate_draft
 from app.stages.s7_check import verify_grounding
+from app.llm.router import llm_stage_context
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,8 @@ async def start_run(run_id: str, company_input: str, hints: Dict[str, Any], mode
         update_run_status(run_id, "resolving_person")
 
         try:
-            profile, s0_confirmed = await resolve_person(person_name, hints)
+            with llm_stage_context(run_id, "S0"):
+                profile, s0_confirmed = await resolve_person(person_name, hints)
             person_profile = profile
             s0_dur = time.time() - t_s0
 
@@ -117,7 +119,8 @@ async def start_run(run_id: str, company_input: str, hints: Dict[str, Any], mode
                 person_title=profile.title_normalized,
                 person_function=profile.function,
                 person_seniority=profile.seniority,
-                person_profile=profile.model_dump()
+                person_profile=profile.model_dump(),
+                company_input=profile.company_raw,
             )
             await emit_event(
                 run_id,
@@ -161,7 +164,8 @@ async def start_run(run_id: str, company_input: str, hints: Dict[str, Any], mode
     update_run_status(run_id, "resolving")
 
     try:
-        identity, is_confirmed = await resolve_company(company_input, hints)
+        with llm_stage_context(run_id, "S1"):
+            identity, is_confirmed = await resolve_company(company_input, hints)
         s1_dur = time.time() - t0
 
         if not is_confirmed:
@@ -230,6 +234,11 @@ async def resume_with_clarification(
     identity_data = run.get("confirmed_company") or {}
     candidates_raw = identity_data.get("alternatives", [])
     
+    # In person-first mode, use the verified employer rather than the prospect placeholder
+    company_name = run.get("person_company") or run.get("company_input") or ""
+    if company_name.startswith("Prospect:") and run.get("person_company"):
+        company_name = run.get("person_company")
+
     # Reconstruct candidate objects
     candidates = [CompanyCandidate(**c) for c in candidates_raw]
     current_round = identity_data.get("clarification_round", 1)
@@ -243,7 +252,7 @@ async def resume_with_clarification(
                 break
         if not chosen_candidate:
             chosen_candidate = CompanyCandidate(
-                name=run["company_input"],
+                name=company_name,
                 domain=selected_domain,
                 description=f"Confirmed domain {selected_domain}"
             )
@@ -295,7 +304,7 @@ async def resume_with_clarification(
 
     hints = run.get("hints") or {}
     scored_candidates, best, confidence, is_confirmed = score_candidates_pool(
-        candidates, run["company_input"], hints, answers_history=all_answers
+        candidates, company_name, hints, answers_history=all_answers
     )
 
     # Dynamic Candidate Re-Discovery:
@@ -313,7 +322,7 @@ async def resume_with_clarification(
                 discovered_pool = await discover_candidates(raw_matched_domain)
                 if not discovered_pool:
                     discovered_pool = [CompanyCandidate(
-                        name=run["company_input"],
+                        name=company_name,
                         domain=raw_matched_domain,
                         description=f"Direct domain {raw_matched_domain} provided by user"
                     )]
@@ -327,7 +336,7 @@ async def resume_with_clarification(
                         seen_domains.add(d)
                     merged_pool.append(c)
                 scored_candidates, best, confidence, is_confirmed = score_candidates_pool(
-                    merged_pool, run["company_input"], hints, answers_history=[raw_matched_domain]
+                    merged_pool, company_name, hints, answers_history=[raw_matched_domain]
                 )
 
         if not is_confirmed:
@@ -337,15 +346,15 @@ async def resume_with_clarification(
                 new_answer_str,
                 flags=re.IGNORECASE
             ).strip(' .:,;?!')
-            input_lower = run["company_input"].lower()
+            input_lower = company_name.lower()
             if cleaned_answer and input_lower in cleaned_answer.lower():
                 refined_target = cleaned_answer
             elif cleaned_answer:
-                refined_target = f"{run['company_input']} {cleaned_answer}"
+                refined_target = f"{company_name} {cleaned_answer}"
             else:
-                refined_target = run["company_input"]
+                refined_target = company_name
 
-            if refined_target.lower() != run["company_input"].lower():
+            if refined_target.lower() != company_name.lower():
                 await emit_event(
                     run_id,
                     "s1_resolve",
@@ -441,7 +450,8 @@ async def run_stages_s2_to_s8(
 
     # --- TIER 1 & TIER 2 PRE-PROCESSING (IN PARALLEL WITH S2) ---
     raw_title = hints.get("recipient_title") or hints.get("recipient_role") or (person_profile.title_raw if person_profile else None)
-    role_norm_task = asyncio.create_task(normalize_recipient_role(raw_title))
+    with llm_stage_context(run_id, "S2"):
+        role_norm_task = asyncio.create_task(normalize_recipient_role(raw_title))
     raw_snippets = hints.get("context") or hints.get("sdr_context") or []
 
     # --- S2: PROFILE & RESEARCH FAN-OUT ---
@@ -451,7 +461,8 @@ async def run_stages_s2_to_s8(
 
     # Step 1: Build structured Company Profile
     t_prof = time.time()
-    profile = await build_company_profile(identity)
+    with llm_stage_context(run_id, "S2"):
+        profile = await build_company_profile(identity)
     prof_dur = time.time() - t_prof
     update_run_status(run_id, "researching", company_profile=profile.model_dump())
     await emit_event(
@@ -475,6 +486,14 @@ async def run_stages_s2_to_s8(
             "evidence_found",
             f"[{ev.researcher}] {ev.claim[:80]}...",
             payload={"evidence": ev.model_dump()}
+        )
+
+    async def on_researcher_event(name: str, state: str, evidence_count: int, duration: float):
+        await emit_event(
+            run_id, "s2_research", "researcher_activity",
+            f"{name.replace('_', ' ').title()} {state}.",
+            payload={"researcher": name, "state": state, "evidence_count": evidence_count, "duration": round(duration, 2)},
+            duration=duration,
         )
 
     async def process_sender_context():
@@ -515,13 +534,15 @@ async def run_stages_s2_to_s8(
     # Sender context is independent of public web research. Start it now so
     # its extraction latency overlaps the S2 fan-out.
     context_task = asyncio.create_task(process_sender_context())
-    evidence_list = await execute_research_fanout(
-        identity,
-        profile=profile,
-        on_evidence_found=on_ev_found,
-        person_profile=person_profile,
-        mode=mode,
-    )
+    with llm_stage_context(run_id, "S2"):
+        evidence_list = await execute_research_fanout(
+            identity,
+            profile=profile,
+            on_evidence_found=on_ev_found,
+            person_profile=person_profile,
+            mode=mode,
+            on_researcher_event=on_researcher_event,
+        )
     sdr_evidence = await context_task
     evidence_list.extend(sdr_evidence)
 
@@ -568,7 +589,8 @@ async def run_stages_s2_to_s8(
     update_run_status(run_id, "discovering")
     await emit_event(run_id, "s3_discovery", "stage_started", "Step 3: Discovering problems (Tier 1 Direct user complaints first, then Tier 2 Inferred operational risks with Grounding Guard)...")
 
-    hypotheses = await discover_problems(identity, evidence_list, profile=profile)
+    with llm_stage_context(run_id, "S3"):
+        hypotheses = await discover_problems(identity, evidence_list, profile=profile)
     if person_profile:
         hypotheses = apply_role_filtered_discovery(hypotheses, person_profile)
 
@@ -682,15 +704,16 @@ async def run_stages_s2_to_s8(
     # --- S5: SOLUTION DESIGN ---
     t_s5 = time.time()
     await emit_event(run_id, "s5_solution", "stage_started", "Designing targeted AI/automation workflow architecture...")
-    solution = await design_solution(
-        identity.name,
-        winning_hyp,
-        hook_ev,
-        recipient_title=active_title,
-        recipient_lens=active_lens,
-        seniority=active_seniority,
-        framing_guidance=role_info.get("framing_guidance")
-    )
+    with llm_stage_context(run_id, "S5"):
+        solution = await design_solution(
+            identity.name,
+            winning_hyp,
+            hook_ev,
+            recipient_title=active_title,
+            recipient_lens=active_lens,
+            seniority=active_seniority,
+            framing_guidance=role_info.get("framing_guidance")
+        )
     s5_dur = time.time() - t_s5
 
     conn.execute(
@@ -711,17 +734,18 @@ async def run_stages_s2_to_s8(
     # --- S6: DRAFTING ---
     t_s6 = time.time()
     await emit_event(run_id, "s6_draft", "stage_started", "Drafting evidence-grounded outreach email and LinkedIn note...")
-    draft = await generate_draft(
-        identity.name,
-        winning_hyp,
-        hook_ev,
-        solution,
-        recipient_name=active_name,
-        recipient_role=active_title,
-        recipient_lens=active_lens,
-        seniority=active_seniority,
-        framing_guidance=role_info.get("framing_guidance")
-    )
+    with llm_stage_context(run_id, "S6"):
+        draft = await generate_draft(
+            identity.name,
+            winning_hyp,
+            hook_ev,
+            solution,
+            recipient_name=active_name,
+            recipient_role=active_title,
+            recipient_lens=active_lens,
+            seniority=active_seniority,
+            framing_guidance=role_info.get("framing_guidance")
+        )
     s6_dur = time.time() - t_s6
     await emit_event(
         run_id,
@@ -737,7 +761,8 @@ async def run_stages_s2_to_s8(
     update_run_status(run_id, "checking")
     await emit_event(run_id, "s7_check", "stage_started", "Running automated Swap-The-Name test and claim verification...")
 
-    verified_draft, quality_report = await verify_grounding(draft, identity.name, evidence_list)
+    with llm_stage_context(run_id, "S7"):
+        verified_draft, quality_report = await verify_grounding(draft, identity.name, evidence_list)
     s7_dur = time.time() - t_s7
     swap_test_unavailable = any(
         "swap test unavailable" in note.lower() or "no valid verdict" in note.lower()
@@ -866,20 +891,22 @@ async def generate_pipeline_for_hypothesis(run_id: str, hypothesis_id: str):
     # Load recipient info for consistent role-fit framing during interactive re-selection
     recip_title = run.get("recipient_title") or hints.get("recipient_title") or hints.get("recipient_role")
     recip_name = run.get("recipient_name") or hints.get("recipient_name")
-    role_info = await normalize_recipient_role(recip_title)
+    with llm_stage_context(run_id, "S4"):
+        role_info = await normalize_recipient_role(recip_title)
 
     # --- S5: SOLUTION DESIGN ---
     t_s5 = time.time()
     await emit_event(run_id, "s5_solution", "stage_started", f"Designing targeted architecture for: {hyp.problem[:60]}...")
-    solution = await design_solution(
-        company_name,
-        hyp,
-        hook_ev,
-        recipient_title=role_info.get("title"),
-        recipient_lens=role_info.get("lens"),
-        seniority=role_info.get("seniority"),
-        framing_guidance=role_info.get("framing_guidance")
-    )
+    with llm_stage_context(run_id, "S5"):
+        solution = await design_solution(
+            company_name,
+            hyp,
+            hook_ev,
+            recipient_title=role_info.get("title"),
+            recipient_lens=role_info.get("lens"),
+            seniority=role_info.get("seniority"),
+            framing_guidance=role_info.get("framing_guidance")
+        )
     s5_dur = time.time() - t_s5
 
     conn.execute(
@@ -900,17 +927,18 @@ async def generate_pipeline_for_hypothesis(run_id: str, hypothesis_id: str):
     # --- S6: DRAFTING ---
     t_s6 = time.time()
     await emit_event(run_id, "s6_draft", "stage_started", "Drafting evidence-grounded outreach email and LinkedIn note...")
-    draft = await generate_draft(
-        company_name,
-        hyp,
-        hook_ev,
-        solution,
-        recipient_name=recip_name,
-        recipient_role=role_info.get("title"),
-        recipient_lens=role_info.get("lens"),
-        seniority=role_info.get("seniority"),
-        framing_guidance=role_info.get("framing_guidance")
-    )
+    with llm_stage_context(run_id, "S6"):
+        draft = await generate_draft(
+            company_name,
+            hyp,
+            hook_ev,
+            solution,
+            recipient_name=recip_name,
+            recipient_role=role_info.get("title"),
+            recipient_lens=role_info.get("lens"),
+            seniority=role_info.get("seniority"),
+            framing_guidance=role_info.get("framing_guidance")
+        )
     s6_dur = time.time() - t_s6
     await emit_event(
         run_id,
@@ -926,7 +954,8 @@ async def generate_pipeline_for_hypothesis(run_id: str, hypothesis_id: str):
     update_run_status(run_id, "checking")
     await emit_event(run_id, "s7_check", "stage_started", "Running automated Swap-The-Name test and claim verification...")
 
-    verified_draft, quality_report = await verify_grounding(draft, company_name, evidence_list)
+    with llm_stage_context(run_id, "S7"):
+        verified_draft, quality_report = await verify_grounding(draft, company_name, evidence_list)
     swap_test_unavailable = any(
         "swap test unavailable" in note.lower() or "no valid verdict" in note.lower()
         for note in quality_report.notes
@@ -1025,7 +1054,8 @@ async def resume_person_clarification(
             person_function=profile.function,
             person_seniority=profile.seniority,
             role_source="manual",
-            person_profile=profile.model_dump()
+            person_profile=profile.model_dump(),
+            company_input=profile.company_raw,
         )
         await emit_event(
             run_id,
@@ -1079,7 +1109,8 @@ async def resume_person_clarification(
             person_function=profile.function,
             person_seniority=profile.seniority,
             role_source="web",
-            person_profile=profile.model_dump()
+            person_profile=profile.model_dump(),
+            company_input=profile.company_raw,
         )
         await emit_event(
             run_id,

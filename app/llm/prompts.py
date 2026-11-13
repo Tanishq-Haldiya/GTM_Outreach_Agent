@@ -209,6 +209,11 @@ The problem has NOT been directly observed — it is a first-principles inferenc
 Structure: [Company name] + [observable fact you can assert] → [as X scales/grows, Y often emerges] → [capability as a potential solution] → [exploratory CTA — invite conversation, do NOT promise to fix a confirmed pain]
 Tone: Consultative, curious, exploratory. You are asking if the pain exists, not asserting it."""
 
+S6_DRAFT_SYSTEM += """
+
+MODE C — REVIEW REQUIRED (grounding_status: "pending_review"):
+The selected problem has not passed its grounding check. Never describe it as a confirmed problem. Use only concise facts supported by the cited source, frame any operational implication as a question, and omit the problem entirely if the source is only general company, event, profile, or growth context. Do not turn a public announcement into an invented internal workflow."""
+
 _S6_SHARED_RULES = """STRICT DRAFTING RULES (BOTH MODES):
 1. Length: 90 to 130 words maximum.
 2. Always explicitly mention {company_name} in the opening hook sentence.
@@ -331,6 +336,29 @@ S6_DRAFT_USER_TEMPLATE_INFERRED = RobustPromptTemplate(
     "- Introduce your capability as something that COULD help IF this friction exists.\n"
     "- CTA: Exploratory — invite a conversation to validate the hypothesis, not to close a confirmed pain. E.g., \"Worth a quick chat to compare notes?\"\n"
     "- DO NOT use phrases like \"I know you're facing...\" or \"You clearly have a problem with...\" — that would be a hallucination.\n\n"
+    + _S6_SHARED_RULES
+)
+
+S6_DRAFT_USER_TEMPLATE_REVIEW = RobustPromptTemplate(
+    "Company: {company_name}\n"
+    "Recipient Name: {recipient_name}\n"
+    "Recipient Title: {recipient_title}\n"
+    "Recipient Lens: {recipient_lens}\n"
+    "Seniority Level: {seniority}\n"
+    "Framing Guidance: {framing_guidance}\n"
+    "Unverified problem candidate (do not state as fact): {problem_statement}\n"
+    "Cited public evidence (may be general context rather than proof of a problem):\n"
+    "{hook_evidence}\n\n"
+    "Solution sketch (ideas only; do not claim the company has these workflows or systems):\n"
+    "{solution_sketch}\n\n"
+    "Sender capability context: {seller_offering} ({seller_value_prop})\n"
+    "Sign-off name: {sender_name}\n\n"
+    "REVIEW-REQUIRED DRAFT INSTRUCTIONS:\n"
+    "- Write a calm, concise, consultative email that asks whether a relevant workflow is a priority.\n"
+    "- Do not say the cited evidence proves the problem. Do not use phrases like 'your challenge is' or 'the signal points to a challenge'.\n"
+    "- Never copy a long source headline, biography, event title, raw excerpt, or tracker output into the email.\n"
+    "- If the evidence is only a general event, profile, announcement, or growth signal, refer to it briefly or omit it; do not invent participant vetting, document review, queues, policies, or other internal processes.\n"
+    "- Describe the seller's capability generally and conditionally. Ask for a conversation only if the topic is relevant.\n"
     + _S6_SHARED_RULES
 )
 

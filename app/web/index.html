@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Zamp AI Solutions · Personalised GTM Outreach Pipeline</title>
-  <link rel="stylesheet" href="/static/style.css?v=10" />
+  <link rel="stylesheet" href="/static/style.css?v=23" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
-<body>
+<body class="saas-theme">
   <!-- Header -->
   <header class="app-header">
     <div class="header-left">
@@ -22,8 +22,9 @@
     <div class="header-center">
       <nav class="nav-tabs">
         <button type="button" class="nav-tab active" data-tab="live-run">New Research</button>
+        <a class="nav-tab" href="/static/approach.html">Approach</a>
         <button type="button" class="nav-tab" data-tab="dashboard">Run History</button>
-        <button type="button" class="nav-tab" data-tab="assumptions">Design Rationale</button>
+        <button type="button" class="nav-tab" data-tab="assumptions">Assumptions</button>
         <a class="nav-tab" href="/static/agent-architecture.html" target="_blank" rel="noopener">Agent Map ↗</a>
       </nav>
     </div>
@@ -79,6 +80,18 @@
             </div>
           </div>
 
+          <div class="cache-toggle-bar">
+            <label class="cache-toggle-control" for="use_cache_checkbox">
+              <input type="checkbox" id="use_cache_checkbox" checked />
+              <span class="cache-toggle-switch" aria-hidden="true"></span>
+              <span class="cache-toggle-text">
+                <span class="cache-toggle-title">Use cached demo results &amp; processes</span>
+                <span class="cache-toggle-desc">Rate-limit safe for demo recording &#183; Uncheck for fresh model run</span>
+              </span>
+            </label>
+            <span id="cache-mode-indicator" class="cache-mode-badge cached">⚡ Cached Replay Active</span>
+          </div>
+
           <div class="mode-preview" aria-live="polite">
             <span class="mode-preview-mark" aria-hidden="true">&#10022;</span>
             <div class="mode-preview-copy">
@@ -88,14 +101,6 @@
             <span id="run-mode-badge" class="mode-preview-badge">Company</span>
           </div>
           <p id="launch-form-feedback" class="form-feedback" role="alert"></p>
-
-          <div class="quick-chips">
-            <span class="chip-label">Try a starting point:</span>
-            <button type="button" class="chip" onclick="fillInput('Ramp', 'https://ramp.com')">Company · Ramp</button>
-            <button type="button" class="chip" onclick="fillInput('Ramp', 'https://ramp.com', 'CFO')">Role · Ramp CFO</button>
-            <button type="button" class="chip" onclick="fillPersonInput('Eric Glyman', 'Ramp', 'New York')">Person · Eric Glyman</button>
-            <button type="button" class="chip" onclick="fillInput('Mercury', '')">Ambiguous company</button>
-          </div>
 
           <details class="hints-accordion">
             <summary>More identity hints (optional)</summary>
@@ -122,6 +127,16 @@
               </div>
             </div>
           </details>
+
+          <div class="quick-chips">
+            <span class="chip-label">Try a starting point:</span>
+            <button type="button" class="chip" onclick="fillInput('Ramp', 'https://ramp.com')">Company · Ramp</button>
+            <button type="button" class="chip" onclick="fillInput('Ramp', 'https://ramp.com', 'CFO')">Role · Ramp CFO</button>
+            <button type="button" class="chip" onclick="fillPersonInput('Eric Glyman', 'Ramp', 'New York')">Person · Eric Glyman</button>
+            <button type="button" class="chip" onclick="fillInput('Mercury', '')">Ambiguous company</button>
+          </div>
+
+
         </form>
       </div>
 
@@ -268,8 +283,8 @@
             <div style="display: flex; align-items: center; gap: 10px;">
               <span class="profile-avatar" id="prof-avatar">🏢</span>
               <div>
-                <h3 id="prof-company-name" style="margin: 0; font-size: 1.15rem; color: #F1F5F9;">Company Profile</h3>
-                <span id="prof-summary" class="subtext" style="color: #94A3B8; font-size: 0.85rem; display: block; margin-top: 2px;"></span>
+                <h3 id="prof-company-name" class="profile-company-name">Company Profile</h3>
+                <span id="prof-summary" class="subtext profile-company-summary"></span>
               </div>
             </div>
             <span class="badge profile-verified-badge">✓ Profile Established</span>
@@ -294,10 +309,18 @@
             </div>
           </div>
           <div id="prof-sources-bar" class="profile-sources-bar hidden">
-            <span style="font-size: 0.72rem; color: #64748B;">Sources Audited:</span>
+            <span class="profile-sources-label">Sources Audited:</span>
             <div id="prof-sources-list" class="profile-sources-list"></div>
           </div>
         </div>
+
+        <!-- 2-Column Split: Evidence & Discovery (Left), Solution & Draft (Right) -->
+        <section class="card process-card" aria-labelledby="process-title">
+          <div class="process-head"><div><span class="eyebrow">RUN TRANSPARENCY</span><h3 id="process-title">What the agents are doing</h3><p>Live states come from pipeline events. Counts reflect completed work.</p></div><div class="usage-total" id="usage-total">0 tokens</div></div>
+          <div class="process-grid" id="researcher-process-grid"><div class="process-placeholder">Research channels will appear when Stage 2 starts.</div></div>
+          <details class="grounding-work"><summary>Grounding Guard work <span id="grounding-summary">Awaiting hypotheses</span></summary><div id="grounding-work-content" class="grounding-work-content"><p>Each discovered problem will show its audit status, reviewer note and supporting evidence references here.</p></div></details>
+          <div id="usage-breakdown" class="usage-breakdown" aria-live="polite">Successful model calls and token counts will appear here.</div>
+        </section>
 
         <!-- 2-Column Split: Evidence & Discovery (Left), Solution & Draft (Right) -->
         <div class="workspace-grid">
@@ -319,7 +342,7 @@
             <div class="card evidence-card">
               <div class="card-title-bar">
                 <div>
-                  <h3>Verified Evidence Feed (<span id="evidence-count">0</span> items)</h3>
+                  <h3>Evidence Feed (<span id="evidence-count">0</span> items)</h3>
                   <span class="subtext">Multi-Channel Customer Voice · Outages · Changelogs · Regulatory Filings</span>
                 </div>
                 <!-- Quantitative Authority & Temporal Bar -->
@@ -474,19 +497,18 @@
     <section id="tab-assumptions" class="tab-pane">
       <div class="card assumptions-card">
         <div class="card-title-bar">
-          <h2>Decisions &amp; Assumptions Log (Case Study Presentation Panel)</h2>
+          <h2>Assumptions behind the workflow</h2>
         </div>
         <p class="assumptions-intro">
-          <strong>Prospect = a company.</strong> The sender may supply the recipient's role and context; the system tailors the problem choice and framing but does not research individuals. This panel explains the intentional product, architecture, and operational choices made for the PS-3 outreach system.
-        </p>
+          Start with a company, a person, or both. A role adds buyer context, while optional clues help resolve identity. These assumptions describe how the current system researches, evaluates evidence, and prepares outreach for review.
         </p>
         <div class="table-responsive">
           <table class="assumptions-table">
             <thead>
               <tr>
                 <th style="width: 60px;">#</th>
-                <th style="width: 320px;">Decision or Assumption</th>
-                <th>Operational Rationale &amp; Why</th>
+                <th style="width: 320px;">Assumption</th>
+                <th>Why it matters</th>
               </tr>
             </thead>
             <tbody id="assumptions-table-body">
@@ -500,6 +522,6 @@
   </main>
 
 <script src="/static/demo-access.js"></script>
-<script src="/static/app.js?v=16"></script>
+<script src="/static/app.js?v=22"></script>
 </body>
 </html>

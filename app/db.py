@@ -146,6 +146,18 @@ def init_db():
         ttl_seconds REAL NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS llm_usage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id TEXT,
+        stage TEXT,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        input_tokens INTEGER DEFAULT 0,
+        output_tokens INTEGER DEFAULT 0,
+        created_time REAL NOT NULL,
+        FOREIGN KEY(run_id) REFERENCES runs(id)
+    );
+
     CREATE TABLE IF NOT EXISTS sdr_context (
         id TEXT PRIMARY KEY,
         run_id TEXT NOT NULL,
@@ -167,6 +179,7 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_drafts_run_id_created ON drafts(run_id, created_time DESC);
     CREATE INDEX IF NOT EXISTS idx_reviews_run_id_timestamp ON reviews(run_id, timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_context_run_id_created ON sdr_context(run_id, created_time ASC);
+    CREATE INDEX IF NOT EXISTS idx_llm_usage_run_id ON llm_usage(run_id, created_time);
     """)
 
     # Migrate extra hypothesis columns if missing
@@ -345,6 +358,15 @@ def insert_event(run_id: str, stage: str, event_type: str, message: str, payload
     conn.close()
     return event_id
 
+def record_llm_usage(run_id: Optional[str], stage: Optional[str], provider: str, model: str, input_tokens: int, output_tokens: int) -> None:
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO llm_usage (run_id, stage, provider, model, input_tokens, output_tokens, created_time) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (run_id, stage, provider, model, max(0, int(input_tokens or 0)), max(0, int(output_tokens or 0)), time.time()),
+    )
+    conn.commit()
+    conn.close()
+
 def get_run_events(run_id: str, after_id: int = 0) -> List[Dict[str, Any]]:
     conn = get_db()
     rows = conn.execute(
@@ -415,6 +437,23 @@ def get_run_full_details(run_id: str) -> Dict[str, Any]:
     rev_rows = conn.execute("SELECT * FROM reviews WHERE run_id = ? ORDER BY timestamp DESC", (run_id,)).fetchall()
     reviews = [dict(r) for r in rev_rows]
 
+    usage_rows = conn.execute(
+        "SELECT stage, provider, model, input_tokens, output_tokens, created_time FROM llm_usage WHERE run_id = ? ORDER BY id",
+        (run_id,),
+    ).fetchall()
+    llm_usage = [dict(r) for r in usage_rows]
+
+    research_rows = conn.execute(
+        "SELECT payload FROM stage_events WHERE run_id = ? AND event_type = 'researcher_activity' ORDER BY id",
+        (run_id,),
+    ).fetchall()
+    research_activity = []
+    for row in research_rows:
+        try:
+            research_activity.append(json.loads(row["payload"] or "{}"))
+        except (TypeError, json.JSONDecodeError):
+            continue
+
     # SDR Context (Tier 2)
     ctx_rows = conn.execute("SELECT * FROM sdr_context WHERE run_id = ? ORDER BY created_time ASC", (run_id,)).fetchall()
     sdr_context = []
@@ -434,6 +473,8 @@ def get_run_full_details(run_id: str) -> Dict[str, Any]:
         "solution": solution,
         "draft": draft,
         "reviews": reviews,
+        "llm_usage": llm_usage,
+        "research_activity": research_activity,
         "sdr_context": sdr_context
     }
 

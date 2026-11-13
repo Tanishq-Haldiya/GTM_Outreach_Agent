@@ -61,13 +61,10 @@ async def discover_candidates(company_input: str, hints: Optional[Dict[str, Any]
     person_title = (hints.get("s0_person_title") or "").strip()
     person_context = (hints.get("s0_person_context") or "").strip()
     sector_hint = (hints.get("s0_company_sector") or "").strip()
-    if person_name:
-        search_query = (
-            f'"{company_input}" "{person_name}" {person_title} '
-            f'{sector_hint} official company website current employer'
-        )
-    else:
-        search_query = f"{company_input} company official website overview"
+    # Search web for the company itself to discover official domain and company profile
+    search_query = f"{company_input} company official website overview"
+    if sector_hint:
+        search_query += f" {sector_hint}"
     search_task = search_web(search_query, max_results=6)
     wiki_task = search_wikidata_entities(company_input, limit=4)
     search_res, wiki_res = await asyncio.gather(search_task, wiki_task)
@@ -111,6 +108,8 @@ Return strictly JSON with key "candidates": list of objects."""
         extracted = await call_llm(extract_prompt, task_type="fast", json_mode=True)
         if isinstance(extracted, dict) and "candidates" in extracted:
             for c in extracted["candidates"]:
+                if not c or not isinstance(c, dict):
+                    continue
                 # Clean candidate name (strip markdown link brackets e.g. [ARB Bearings Limited](/arb... -> ARB Bearings Limited)
                 cand_name = c.get("name") or company_input
                 cand_name = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', cand_name)
@@ -223,6 +222,7 @@ def score_candidates_pool(
     candidates = deduped_candidates
 
     clean_input = _clean_company_name(company_input)
+    hints = hints or {}
     website_hint = (hints.get("website_hint") or "").lower()
     country_hint = (hints.get("country_hint") or "").lower()
     industry_hint = (hints.get("industry_hint") or hints.get("s0_company_sector") or "").lower()
@@ -339,10 +339,15 @@ def score_candidates_pool(
     runner_up_score = runner_up.final_score if runner_up else 0.0
 
     # Ambiguity factor:
-    # If user explicitly matched the domain in hints or answers, ambiguity = 1.0
+    # If user explicitly matched the domain or company name in hints or answers, ambiguity = 1.0
     if website_hint and (website_hint in best.domain or best.domain in website_hint):
         ambiguity_factor = 1.0
-    elif answer_text and (best.domain in answer_text or best.domain.split('.')[0] in answer_text):
+    elif answer_text and (
+        best.domain in answer_text or
+        best.domain.split('.')[0] in answer_text or
+        (best.name and best.name.lower() in answer_text) or
+        (best.name and answer_text in best.name.lower())
+    ):
         ambiguity_factor = 1.0
     elif runner_up and best.hint_match_score >= 0.60 and runner_up.hint_match_score <= 0.20:
         # Clarification cleanly separated the winner from the runner up!
@@ -396,11 +401,12 @@ def generate_clarifying_question(candidates: List[CompanyCandidate], round_num: 
 
 async def resolve_company(
     company_input: str,
-    hints: Dict[str, Any]
+    hints: Optional[Dict[str, Any]] = None
 ) -> Tuple[CompanyIdentity, bool]:
     """
     Main S1 entrypoint: Discovers candidate entities and scores them against the 0.80 threshold.
     """
+    hints = hints or {}
     candidates = await discover_candidates(company_input, hints)
     scored_candidates, best, confidence, is_confirmed = score_candidates_pool(
         candidates, company_input, hints, answers_history=[]

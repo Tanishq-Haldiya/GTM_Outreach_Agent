@@ -57,6 +57,71 @@ function fillPersonInput(name, comp, city) {
   updateRunModePreview();
 }
 
+function loadDemoCase(caseId) {
+  window.currentDemoCase = caseId;
+  const cacheCheckbox = document.getElementById('use_cache_checkbox');
+  if (cacheCheckbox) {
+    cacheCheckbox.checked = true;
+    updateCacheIndicator();
+  }
+  const cases = {
+    ramp_company: { company: 'Ramp', person: '' },
+    ramp_role: { company: 'Ramp', role: 'CFO' },
+    person_only: { person: 'Immad Akhund' },
+    ramp_person: { company: 'Ramp', person: 'Eric Glyman', role: 'Co-founder and Co-CEO' },
+    mercury_ambiguous: { company: 'Mercury' },
+    mercury_qualified: { company: 'Mercury (Finance)' },
+    mercury_person: { company: 'Mercury', person: 'Immad Akhund', role: 'Co-founder and CEO' },
+    ambiguous_person: { person: 'Alex Smith' },
+    matiks_community: { company: 'Matiks', site: 'matiks.com', industry: 'EdTech / Mobile App' },
+    mahalaxmi_employee: { company: 'Mahalaxmi Travels', country: 'India', industry: 'Intercity Logistics & Transport' },
+    brex_compliance: { company: 'Brex', site: 'brex.com', industry: 'FinTech / Corporate Card' },
+    shipbob_changelog: { company: 'ShipBob', site: 'shipbob.com', industry: 'E-commerce Fulfillment & Logistics' }
+  }[caseId];
+  if (!cases) return;
+  const values = {
+    company_name: cases.company,
+    website_hint: cases.site,
+    person_name: cases.person,
+    recipient_role: cases.role,
+    industry_hint: cases.industry,
+    country_hint: cases.country,
+    city_hint: cases.location,
+    linkedin_hint: cases.linkedin
+  };
+  Object.entries(values).forEach(([id, value]) => {
+    const field = document.getElementById(id);
+    if (!field) return;
+    field.value = value || '';
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  const hintsPanel = document.querySelector('.hints-accordion');
+  if (hintsPanel) hintsPanel.open = false;
+  updateRunModePreview();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+document.querySelector('.demo-case-grid')?.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-demo-case]');
+  if (button) loadDemoCase(button.dataset.demoCase);
+});
+
+function updateCacheIndicator() {
+  const checkbox = document.getElementById('use_cache_checkbox');
+  const indicator = document.getElementById('cache-mode-indicator');
+  if (!checkbox || !indicator) return;
+  if (checkbox.checked) {
+    indicator.textContent = '⚡ Cached Replay Active';
+    indicator.className = 'cache-mode-badge cached';
+  } else {
+    indicator.textContent = '🌐 Fresh Live Run';
+    indicator.className = 'cache-mode-badge fresh';
+  }
+}
+
+document.getElementById('use_cache_checkbox')?.addEventListener('change', updateCacheIndicator);
+
 function updateRunModePreview() {
   const company = document.getElementById('company_name')?.value.trim() || '';
   const person = document.getElementById('person_name')?.value.trim() || '';
@@ -175,6 +240,7 @@ if (launchFormEl) {
     const feedback = document.getElementById('launch-form-feedback');
     if (feedback) feedback.textContent = '';
 
+    const useCache = document.getElementById('use_cache_checkbox') ? document.getElementById('use_cache_checkbox').checked : true;
     const payload = {
       person_name: personName,
       company_name: companyName,
@@ -187,7 +253,9 @@ if (launchFormEl) {
       industry_hint: document.getElementById('industry_hint') ? document.getElementById('industry_hint').value.trim() || null : null,
       recipient_name: document.getElementById('recipient_name') ? document.getElementById('recipient_name').value.trim() || null : null,
       recipient_role: document.getElementById('recipient_role') ? document.getElementById('recipient_role').value.trim() || null : null,
-      mode: 'fast'
+      mode: 'fast',
+      use_cache: useCache,
+      demo_case: window.currentDemoCase || null
     };
 
     // Reset UI
@@ -205,6 +273,9 @@ if (launchFormEl) {
       }
       const data = await res.json();
       currentRunId = data.run_id;
+      if (data.cached) {
+        appendLog('s1_resolve', `⚡ Using cached demo results & processes (${data.demo_case || 'scenario'}) — rate-limit safe for recording`);
+      }
       startTimer();
       connectSSE(currentRunId);
     } catch (err) {
@@ -214,6 +285,18 @@ if (launchFormEl) {
 }
 
 function resetLiveWorkspace(targetName) {
+  researcherActivity.clear();
+  usageRecords.length = 0;
+  const processGrid = document.getElementById('researcher-process-grid');
+  if (processGrid) processGrid.innerHTML = '<div class="process-placeholder">Research channels will appear when Stage 2 starts.</div>';
+  const usageTotal = document.getElementById('usage-total');
+  if (usageTotal) usageTotal.textContent = '0 tokens';
+  const usageBreakdown = document.getElementById('usage-breakdown');
+  if (usageBreakdown) usageBreakdown.textContent = 'Successful model calls and token counts will appear here.';
+  const grounding = document.getElementById('grounding-work-content');
+  if (grounding) grounding.innerHTML = '<p>Each discovered problem will show its audit status, reviewer note and supporting evidence references here.</p>';
+  const groundingSummary = document.getElementById('grounding-summary');
+  if (groundingSummary) groundingSummary.textContent = 'Awaiting hypotheses';
   document.getElementById('live-workspace').classList.remove('hidden');
   const s0Card = document.getElementById('s0-clarification-card');
   if (s0Card) s0Card.classList.add('hidden');
@@ -235,8 +318,12 @@ function resetLiveWorkspace(targetName) {
   document.getElementById('evidence-list').innerHTML = '';
   document.getElementById('evidence-count').textContent = '0';
   document.getElementById('hypotheses-list').innerHTML = '';
-  document.getElementById('solution-content').innerHTML = '<div class="empty-state">Designing in S5...</div>';
-  document.getElementById('draft-content').innerHTML = '<div class="empty-state">Drafting in S6...</div>';
+  const solutionBox = document.getElementById('solution-content');
+  solutionBox.classList.add('empty-state');
+  solutionBox.textContent = 'Designing in S5...';
+  const draftBox = document.getElementById('draft-content');
+  draftBox.classList.add('empty-state');
+  draftBox.textContent = 'Drafting in S6...';
   document.getElementById('review-feedback').classList.add('hidden');
   
   allEvidenceItems = [];
@@ -277,6 +364,12 @@ function handleStageEvent(ev) {
   document.getElementById('active-status-tag').textContent = `Status: ${ev.stage.replace('_', ' ').toUpperCase()}`;
 
   switch (ev.event_type) {
+    case 'researcher_activity':
+      renderResearcherActivity(ev.payload || {});
+      break;
+    case 'llm_usage':
+      appendUsageRecord({ ...ev.payload, stage: ev.stage });
+      break;
     case 's0_started':
       setStepperStage('s0');
       break;
@@ -360,6 +453,7 @@ function handleStageEvent(ev) {
     case 'stage_completed':
       if (ev.stage === 's3_discovery' && ev.payload.hypotheses) {
         renderHypotheses(ev.payload.hypotheses);
+        renderGroundingWork(ev.payload.hypotheses);
       } else if (ev.stage === 's4_score') {
         const list = ev.payload.ranked_hypotheses || (ev.payload.winner ? [ev.payload.winner] : []);
         const winnerId = ev.payload.winner ? ev.payload.winner.id : null;
@@ -398,6 +492,49 @@ function handleStageEvent(ev) {
       if (eventSource) eventSource.close();
       break;
   }
+}
+
+const researcherActivity = new Map();
+const usageRecords = [];
+function renderResearcherActivity(item) {
+  if (!item.researcher) return;
+  researcherActivity.set(item.researcher, item);
+  const grid = document.getElementById('researcher-process-grid');
+  if (!grid) return;
+  grid.innerHTML = [...researcherActivity.values()].map((row) => {
+    const state = row.state || 'queued';
+    const evidence = row.evidence_count ? `${row.evidence_count} candidates` : state === 'completed' ? 'No candidates returned' : 'Working';
+    return `<article class="process-agent ${escapeHtml(state)}"><span class="process-state">${escapeHtml(state)}</span><strong>${escapeHtml(row.researcher.replaceAll('_', ' '))}</strong><small>${escapeHtml(evidence)}${row.duration ? ` · ${Number(row.duration).toFixed(1)}s` : ''}</small></article>`;
+  }).join('');
+}
+
+function renderGroundingWork(hypotheses) {
+  const content = document.getElementById('grounding-work-content');
+  const summary = document.getElementById('grounding-summary');
+  if (!content) return;
+  const list = Array.isArray(hypotheses) ? hypotheses : [];
+  const verified = list.filter(h => h.grounding_status === 'verified').length;
+  if (summary) summary.textContent = `${verified} verified · ${list.length - verified} needs review`;
+  if (!list.length) {
+    content.innerHTML = '<p>No hypotheses were returned for the grounding review.</p>';
+    return;
+  }
+  content.innerHTML = list.map(h => {
+    const ids = Array.isArray(h.evidence_ids) ? h.evidence_ids : [];
+    const status = h.grounding_status || 'review needed';
+    const refs = ids.map(id => `<button type="button" class="grounding-ref" onclick="highlightEvidenceItem('${escapeHtml(id)}')">${escapeHtml(id)}</button>`).join('');
+    return `<article class="grounding-row"><div><strong>${escapeHtml(h.problem || 'Unnamed hypothesis')}</strong><span class="grounding-status ${status === 'verified' ? 'ok' : 'review'}">${escapeHtml(status)}</span></div><p>${escapeHtml(h.grounding_critique || 'No separate audit note was returned.')}</p><small>Supporting evidence: ${refs || 'None linked'}</small></article>`;
+  }).join('');
+}
+
+function appendUsageRecord(record) {
+  usageRecords.push(record);
+  const total = usageRecords.reduce((sum, row) => sum + (Number(row.input_tokens) || 0) + (Number(row.output_tokens) || 0), 0);
+  const totalEl = document.getElementById('usage-total');
+  if (totalEl) totalEl.textContent = `${total.toLocaleString()} tokens`;
+  const breakdown = document.getElementById('usage-breakdown');
+  if (!breakdown) return;
+  breakdown.innerHTML = usageRecords.slice(-8).reverse().map(row => `<span>${escapeHtml(row.stage || '')} · ${escapeHtml(row.provider || '')}/${escapeHtml(row.model || '')}: ${(Number(row.input_tokens)||0).toLocaleString()} in / ${(Number(row.output_tokens)||0).toLocaleString()} out</span>`).join('');
 }
 
 function updateRoleChipUI(info) {
@@ -747,7 +884,7 @@ function renderHypotheses(hypotheses, activeHypId = null) {
       ${groundingCritiqueHtml}
 
       ${h.lens_explanation ? `
-        <div style="font-size: 0.75rem; color: #93C5FD; margin-bottom: 8px; font-style: italic;">
+        <div class="hyp-lens-explanation">
           ℹ️ ${escapeHtml(h.lens_explanation)}
         </div>
       ` : ''}
@@ -770,7 +907,7 @@ function renderHypotheses(hypotheses, activeHypId = null) {
         <div class="formula-math">
           Role Adjusted Score = Base Score (${Number(b.base_score || h.base_score || rawScore).toFixed(3)}) × Role Fit (${Number(b.role_fit || h.role_fit || 1.0).toFixed(2)}) = <strong>${scoreVal}</strong>
           <br>
-          <span style="font-size: 0.72rem; color: #94A3B8;">Base Score = Layer (${(b.layer_mult || 1.0).toFixed(2)}) × Freshness (${(b.freshness_mult || 1.0).toFixed(2)}) × Composite [${Number(b.raw_composite || 0).toFixed(3)}]</span>
+          <span class="formula-math-sub">Base Score = Layer (${(b.layer_mult || 1.0).toFixed(2)}) × Freshness (${(b.freshness_mult || 1.0).toFixed(2)}) × Composite [${Number(b.raw_composite || 0).toFixed(3)}]</span>
         </div>
         <div class="breakdown-grid">
           <div><span>Base Company Score:</span> <strong>${Number(b.base_score || h.base_score || rawScore).toFixed(3)}</strong></div>
@@ -814,7 +951,7 @@ function renderHypotheses(hypotheses, activeHypId = null) {
 
       ${evTagsHtml ? `
         <div class="hyp-evidence-tags">
-          <span style="font-size: 0.7rem; color: #94A3B8;">Supporting Hooks:</span>
+          <span class="hyp-evidence-label">Supporting Hooks:</span>
           ${evTagsHtml}
         </div>
       ` : ''}
@@ -824,9 +961,9 @@ function renderHypotheses(hypotheses, activeHypId = null) {
           ${groundingNeedsReview
             ? '<span class="badge-grounding-pending">SELECTED - GROUNDING REVIEW NEEDED</span>'
             : '<span class="badge-active-hyp">ACTIVE FOR OUTREACH</span>'}
-          <span style="font-size: 0.72rem; color: #94A3B8;">${groundingNeedsReview ? 'Draft prepared; verify the cited evidence before outreach.' : 'Architecture &amp; Draft Built for This Problem'}</span>
+          <span class="hyp-action-note">${groundingNeedsReview ? 'Draft prepared; verify the cited evidence before outreach.' : 'Architecture &amp; Draft Built for This Problem'}</span>
         ` : `
-          <span style="font-size: 0.72rem; color: #94A3B8;">Alternative Hypothesis</span>
+          <span class="hyp-action-note">Alternative Hypothesis</span>
           <button type="button" class="btn-select-hyp" onclick="selectProblemHypothesis('${h.id}')">
             Select Problem &amp; Generate Outreach
           </button>
@@ -883,8 +1020,12 @@ async function selectProblemHypothesis(hypId) {
   highlightActiveHypothesis(hypId);
 
   // Clear right column indicators while regenerating
-  document.getElementById('solution-content').innerHTML = '<div class="empty-state">Regenerating Solution Architecture in S5...</div>';
-  document.getElementById('draft-content').innerHTML = '<div class="empty-state">Regenerating Grounded Outreach in S6...</div>';
+  const solutionBox = document.getElementById('solution-content');
+  solutionBox.classList.add('empty-state');
+  solutionBox.textContent = 'Regenerating Solution Architecture in S5...';
+  const draftBox = document.getElementById('draft-content');
+  draftBox.classList.add('empty-state');
+  draftBox.textContent = 'Regenerating Grounded Outreach in S6...';
 
   // Ensure EventSource is connected so live S5, S6, S7 events are received
   connectSSE(currentRunId);
@@ -937,11 +1078,12 @@ async function selectProblemHypothesis(hypId) {
 
 function renderSolution(sol) {
   const box = document.getElementById('solution-content');
+  box.classList.remove('empty-state');
   box.innerHTML = `
     <div class="solution-box">
       <div class="solution-field">
         <strong>Process Architecture</strong>
-        <div style="font-size: 1rem; font-weight: 700; color: #fff;">${escapeHtml(sol.process_name)}</div>
+        <div class="solution-process-name">${escapeHtml(sol.process_name)}</div>
       </div>
       <div class="solution-field">
         <strong>What it Automates</strong>
@@ -963,7 +1105,7 @@ function renderSolution(sol) {
       </div>
       <div class="solution-field">
         <strong>Impact Direction</strong>
-        <div style="color: #34D399; font-weight: 600;">${escapeHtml(sol.impact_direction)}</div>
+        <div class="solution-impact">${escapeHtml(sol.impact_direction)}</div>
       </div>
     </div>
   `;
@@ -972,6 +1114,7 @@ function renderSolution(sol) {
 function renderDraft(draft) {
   currentDraftId = draft.id;
   const box = document.getElementById('draft-content');
+  box.classList.remove('empty-state');
   const alts = Array.isArray(draft.subject_alternatives) ? draft.subject_alternatives : [];
   const altsHtml = alts.length > 0 ? `
     <div class="subject-alternatives-bar">
@@ -986,12 +1129,15 @@ function renderDraft(draft) {
 
   const draftStyle = draft.draft_style || 'direct';
   const isInferred = draftStyle === 'inferred';
+  const needsReview = draftStyle === 'review';
   const styleBadge = isInferred
-    ? `<span title="Inferred draft: opens with an observable signal, bridges to a hypothesis — consultative tone" style="display:inline-flex;align-items:center;gap:4px;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.4);color:#FCD34D;font-size:0.68rem;font-weight:700;letter-spacing:0.04em;padding:2px 8px;border-radius:999px;margin-left:8px;vertical-align:middle;cursor:help;">◈ INFERRED</span>`
-    : `<span title="Direct draft: opens with the confirmed pain as an observed fact — assertive tone" style="display:inline-flex;align-items:center;gap:4px;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.4);color:#6EE7B7;font-size:0.68rem;font-weight:700;letter-spacing:0.04em;padding:2px 8px;border-radius:999px;margin-left:8px;vertical-align:middle;cursor:help;">✓ DIRECT</span>`;
+    ? `<span class="draft-style-badge inferred" title="An inferred opportunity is presented as a hypothesis, not a confirmed pain.">◈ INFERRED</span>`
+    : needsReview
+      ? `<span class="draft-style-badge review" title="Grounding was not confirmed. Validate the evidence and problem before using this draft.">REVIEW NEEDED</span>`
+      : `<span class="draft-style-badge direct" title="Grounded in a directly observed operational issue.">✓ DIRECT</span>`;
 
   const personHookBadge = draft.person_hook_cited
-    ? `<span title="Opening grounded in sender-provided recipient text with verified exact match" style="display:inline-flex;align-items:center;gap:4px;background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.4);color:#C084FC;font-size:0.68rem;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:6px;vertical-align:middle;">👤 PERSON HOOK CITED</span>`
+    ? `<span class="person-hook-badge" title="Opening grounded in sender-provided recipient text with verified exact match">PERSON HOOK CITED</span>`
     : '';
 
   box.innerHTML = `
@@ -1006,11 +1152,11 @@ function renderDraft(draft) {
       <div class="draft-body-text" id="draft-body-editable" contenteditable="true">${escapeHtml(draft.body)}</div>
     </div>
     <div class="linkedin-note-box">
-      <strong style="display:block; margin-bottom: 2px; color: #60A5FA;">LinkedIn InMail / Connection Note:</strong>
+      <strong>LinkedIn InMail / Connection Note:</strong>
       <span>${escapeHtml(draft.linkedin_note)}</span>
     </div>
     <div class="why-hook-box">
-      <strong style="display:block; margin-bottom: 2px;">SDR Internal Guidance (Why this hook?):</strong>
+      <strong>SDR Internal Guidance (Why this hook?):</strong>
       <span>${escapeHtml(draft.why_this_hook)}</span>
     </div>
   `;
@@ -1059,6 +1205,8 @@ function renderQualityReport(report, draft) {
     `;
   }
 
+  renderGroundingQa(report);
+
   const notesEl = document.getElementById('quality-notes');
   if (notesEl && report.notes && report.notes.length > 0) {
     notesEl.innerHTML = report.notes.map(n => `<div class="quality-note-item" style="font-size: 0.78rem; color: #94A3B8; margin-top: 3px;">• ${escapeHtml(n)}</div>`).join('');
@@ -1068,6 +1216,24 @@ function renderQualityReport(report, draft) {
     const bodyEl = document.getElementById('draft-body-editable');
     if (bodyEl) bodyEl.textContent = draft.body;
   }
+}
+
+
+function renderGroundingQa(report) {
+  const content = document.getElementById('grounding-work-content');
+  if (!content || !report) return;
+  content.querySelector('.grounding-qa')?.remove();
+  const flagged = Array.isArray(report.unsupported_claims) ? report.unsupported_claims : [];
+  const notes = Array.isArray(report.notes) ? report.notes : [];
+  const checks = [
+    ['Draft verdict', report.verdict || 'not reported'],
+    ['Name swap check', report.passed_swap_test ? 'passed' : (notes.some(note => String(note).toLowerCase().includes('swap test unavailable')) ? 'unavailable' : 'not passed')],
+    ['Unsupported claims', flagged.length ? `${flagged.length} flagged` : 'none flagged'],
+    ['Invented numbers', report.invented_numbers_detected ? 'flagged' : 'none flagged'],
+    ['Draft length', `${Number(report.word_count) || 0} words`]
+  ];
+  const details = [...flagged.map(note => `Claim flagged: ${note}`), ...notes];
+  content.insertAdjacentHTML('beforeend', `<section class="grounding-qa"><h4>Final draft QA - Stage 7</h4><div class="qa-check-grid">${checks.map(([label, value]) => `<span><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value))}</strong></span>`).join('')}</div>${details.length ? `<ul>${details.map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul>` : '<p>No QA notes were returned.</p>'}</section>`);
 }
 
 // S0 Person Clarification & Resolved Prospect Helpers
@@ -1536,6 +1702,14 @@ async function viewPastRun(runId) {
     const res = await fetch(`/api/runs/${runId}`);
     const data = await res.json();
     currentRunId = runId;
+    usageRecords.length = 0;
+    researcherActivity.clear();
+    const processGrid = document.getElementById('researcher-process-grid');
+    if (processGrid) processGrid.innerHTML = '<div class="process-placeholder">Loading saved researcher activity…</div>';
+    const breakdown = document.getElementById('usage-breakdown');
+    if (breakdown) breakdown.textContent = 'Loading saved model usage…';
+    const usageTotal = document.getElementById('usage-total');
+    if (usageTotal) usageTotal.textContent = '0 tokens';
     
     // Switch to tab
     document.querySelector('[data-tab="live-run"]').click();
@@ -1574,9 +1748,19 @@ async function viewPastRun(runId) {
     if (data.evidence) {
       data.evidence.forEach(e => appendEvidence(e));
     }
+    if (data.llm_usage) {
+      data.llm_usage.forEach(row => appendUsageRecord(row));
+    }
+    if (data.research_activity) {
+      data.research_activity.forEach(renderResearcherActivity);
+      if (!data.research_activity.length && processGrid) {
+        processGrid.innerHTML = '<div class="process-placeholder">No researcher activity was saved for this run.</div>';
+      }
+    }
     // Hypotheses
     if (data.hypotheses) {
       renderHypotheses(data.hypotheses, data.run.selected_hypothesis_id);
+      renderGroundingWork(data.hypotheses);
     }
     // Solution
     if (data.solution) {
@@ -1605,9 +1789,9 @@ async function loadAssumptions() {
     (data.assumptions || []).forEach(a => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td style="font-weight: 700; color: #93C5FD;">#${a.num}</td>
-        <td style="font-weight: 600;">${escapeHtml(a.decision)}</td>
-        <td style="color: #D1D5DB;">${escapeHtml(a.why)}</td>
+        <td class="assumption-number">#${escapeHtml(a.num)}</td>
+        <td class="assumption-decision">${escapeHtml(a.decision)}</td>
+        <td class="assumption-why">${escapeHtml(a.why)}</td>
       `;
       tbody.appendChild(tr);
     });
@@ -1624,4 +1808,15 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+// Approach-page scenarios return here with a case ID and prefill the workspace.
+const initialPageParams = new URLSearchParams(window.location.search);
+const requestedDemoCase = initialPageParams.get('demo_case');
+const requestedTab = initialPageParams.get('tab');
+if (requestedDemoCase) {
+  window.history.replaceState({}, document.title, window.location.pathname);
+  requestAnimationFrame(() => loadDemoCase(requestedDemoCase));
+} else if (['live-run', 'dashboard', 'assumptions'].includes(requestedTab)) {
+  document.querySelector(`[data-tab="${requestedTab}"]`)?.click();
 }

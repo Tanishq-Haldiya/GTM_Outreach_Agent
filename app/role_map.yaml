@@ -89,7 +89,12 @@ functions:
       - head of accounting
       - head of ap
       - head of ar
+      - head of ap and billing
       - billing controller
+      - billing specialist
+      - billing
+      - accounts payable
+      - accounts receivable
       - director of financial operations
       - treasury
     cares_about: "Invoicing delays, collections, cash flow predictability, audit compliance, month-end close cycle"
@@ -140,6 +145,8 @@ functions:
       - chief information officer
       - vp engineering
       - head of engineering
+      - head of infrastructure
+      - infrastructure
       - director of it
       - it operations manager
       - systems architect
@@ -209,6 +216,7 @@ functions:
       - chro
       - chief people officer
       - vp people
+      - head of people
       - head of hr
       - head of talent
       - people operations director
@@ -235,6 +243,9 @@ functions:
       - head of compliance
       - legal director
       - regulatory affairs director
+      - head of regulatory affairs
+      - regulatory affairs
+      - regulatory
       - contract manager
     cares_about: "Regulatory audit exposure, contract turnaround time, KYC/AML review queues, policy enforcement gaps"
     pain_categories:

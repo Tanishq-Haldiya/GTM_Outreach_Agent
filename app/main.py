@@ -24,6 +24,10 @@ from app.orchestrator import (
     start_run, resume_with_clarification, generate_pipeline_for_hypothesis,
     resume_person_clarification, override_prospect
 )
+from app.demo_cache import (
+    match_demo_case, create_and_seed_cached_run,
+    replay_cached_demo, resume_cached_demo, get_demo_cache
+)
 from app.tools.http_client import get_http_client, close_http_client
 
 app = FastAPI(title="GTM Outreach AI Pipeline", version="1.0.0")
@@ -161,12 +165,26 @@ async def create_run(req: RunCreate, background_tasks: BackgroundTasks):
         "role_override": req.role_override,
     }
     company_input = req.company_name or company_hint or (f"Prospect: {req.person_name}" if req.person_name else "Target")
+
+    # If cache is enabled (default), check if this matches any demo scenarios from the approach page
+    if req.use_cache:
+        matched_case = match_demo_case(
+            company_name=req.company_name,
+            person_name=req.person_name,
+            role=recip_role,
+            demo_case=req.demo_case
+        )
+        if matched_case:
+            create_and_seed_cached_run(run_id, matched_case, company_input, req.person_name, hints)
+            background_tasks.add_task(replay_cached_demo, run_id, matched_case)
+            return {"run_id": run_id, "status": "queued", "cached": True, "demo_case": matched_case}
+
     insert_run(run_id, company_input, hints, req.mode, person_name=req.person_name)
     
     # Launch async pipeline in background task
     background_tasks.add_task(start_run, run_id, company_input, hints, req.mode)
     
-    return {"run_id": run_id, "status": "queued"}
+    return {"run_id": run_id, "status": "queued", "cached": False}
 
 @app.get("/api/runs/{run_id}/events")
 async def run_events_sse(run_id: str, request: Request):
@@ -228,6 +246,12 @@ async def submit_clarification(run_id: str, req: ClarifyRequest, background_task
     if run["status"] != "awaiting_clarification":
         raise HTTPException(status_code=400, detail=f"Run is in state '{run['status']}', not awaiting clarification.")
 
+    run_hints = run.get("hints") or {}
+    if run_hints.get("use_cache") and run_hints.get("demo_case"):
+        demo_case = run_hints["demo_case"]
+        background_tasks.add_task(resume_cached_demo, run_id, demo_case)
+        return {"status": "resumed", "run_id": run_id, "cached": True}
+
     background_tasks.add_task(
         resume_with_clarification,
         run_id,
@@ -244,6 +268,12 @@ async def clarify_person(run_id: str, req: PersonClarifyRequest, background_task
         raise HTTPException(status_code=404, detail="Run not found")
     if run["status"] != "awaiting_person_clarification":
         raise HTTPException(status_code=400, detail=f"Run is in state '{run['status']}', not awaiting person clarification.")
+
+    run_hints = run.get("hints") or {}
+    if run_hints.get("use_cache") and run_hints.get("demo_case"):
+        demo_case = run_hints["demo_case"]
+        background_tasks.add_task(resume_cached_demo, run_id, demo_case)
+        return {"status": "resumed", "run_id": run_id, "cached": True}
 
     background_tasks.add_task(
         resume_person_clarification,
@@ -291,6 +321,23 @@ async def select_problem(run_id: str, req: SelectProblemRequest, background_task
 async def list_runs():
     runs = get_all_runs(limit=40)
     return {"runs": runs}
+
+@app.get("/api/demo-cases")
+async def list_demo_cases():
+    cache = get_demo_cache()
+    return {
+        "cases": [
+            {
+                "case_id": k,
+                "name": v.get("name"),
+                "events_count": len(v.get("events", [])),
+                "hypotheses_count": len(v.get("hypotheses", [])),
+                "evidence_count": len(v.get("evidence", [])),
+                "has_draft": len(v.get("drafts", [])) > 0
+            }
+            for k, v in cache.items()
+        ]
+    }
 
 @app.get("/api/runs/{run_id}")
 async def get_run_details(run_id: str):

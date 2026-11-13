@@ -25,6 +25,8 @@ TAVILY_API_KEY=your_tavily_key
 SERPER_API_KEY=your_serper_key  # Optional fallback
 ```
 
+LLM calls are placed on one shared request lane by default, with bounded output sizes and model-specific rolling-minute budgets. A fast run uses four high-signal research channels; deep mode enables the full research fan-out. These are app-side safety settings, not provider quota guarantees. Override the concurrency and research breadth with `LLM_MAX_CONCURRENT_REQUESTS` and `FAST_RESEARCH_CHANNEL_LIMIT`, and model budgets with values such as `LLM_TPM_QWEN_QWEN3_8_27B` or `LLM_TPM_OPENAI_GPT_OSS_120B`. Successful provider-reported token usage is saved with each run for comparison.
+
 ### 3. Launch the Application
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
