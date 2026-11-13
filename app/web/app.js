@@ -73,9 +73,12 @@ function loadDemoCase(caseId) {
     mercury_qualified: { company: 'Mercury (Finance)' },
     mercury_person: { company: 'Mercury', person: 'Immad Akhund', role: 'Co-founder and CEO' },
     ambiguous_person: { person: 'Alex Smith' },
-    matiks_community: { company: 'Matiks', site: 'matiks.com', industry: 'EdTech / Mobile App' },
+    drishti_matiks: { company: 'Matiks', person: 'Drishti Pandita', role: 'Founding Product Led Growth', site: 'matiks.com', industry: 'EdTech / Mobile App' },
+    sudhanshu_matiks: { company: 'Matiks', person: 'Sudhanshu Bhatia', role: 'Founder and CEO', site: 'matiks.com', industry: 'EdTech / Mobile App' },
+    matiks_community: { company: 'Matiks', person: 'Drishti Pandita', role: 'Founding Product Led Growth', site: 'matiks.com', industry: 'EdTech / Mobile App' },
     mahalaxmi_employee: { company: 'Mahalaxmi Travels', country: 'India', industry: 'Intercity Logistics & Transport' },
-    brex_compliance: { company: 'Brex', site: 'brex.com', industry: 'FinTech / Corporate Card' },
+    pedro_brex: { company: 'Brex', person: 'Pedro Franceschi', role: 'Co-founder and CEO', site: 'brex.com', industry: 'FinTech / Corporate Card' },
+    brex_compliance: { company: 'Brex', person: 'Pedro Franceschi', role: 'Co-founder and CEO', site: 'brex.com', industry: 'FinTech / Corporate Card' },
     shipbob_changelog: { company: 'ShipBob', site: 'shipbob.com', industry: 'E-commerce Fulfillment & Logistics' }
   }[caseId];
   if (!cases) return;

@@ -16,7 +16,7 @@ def test_demo_cache_loaded():
     expected_cases = [
         "ramp_company", "person_only", "mercury_ambiguous",
         "ambiguous_person", "matiks_community", "mahalaxmi_employee",
-        "brex_compliance", "shipbob_changelog"
+        "brex_compliance", "shipbob_changelog", "drishti_matiks", "pedro_brex"
     ]
     for case in expected_cases:
         assert case in cache, f"Expected {case} in demo cache!"
@@ -32,9 +32,12 @@ def test_match_demo_case():
     assert match_demo_case(person_name="Immad Akhund") == "person_only"
     assert match_demo_case(person_name="Alex Smith") == "ambiguous_person"
     assert match_demo_case(company_name="Mercury") == "mercury_ambiguous"
-    assert match_demo_case(company_name="Matiks") == "matiks_community"
+    assert match_demo_case(company_name="Matiks") in ("drishti_matiks", "matiks_community")
+    assert match_demo_case(person_name="Drishti Pandita") == "drishti_matiks"
+    assert match_demo_case(person_name="Sudhanshu Bhatia") == "drishti_matiks"
+    assert match_demo_case(person_name="Pedro Franceschi") == "pedro_brex"
     assert match_demo_case(company_name="Mahalaxmi Travels") == "mahalaxmi_employee"
-    assert match_demo_case(company_name="Brex") == "brex_compliance"
+    assert match_demo_case(company_name="Brex") in ("pedro_brex", "brex_compliance")
     assert match_demo_case(company_name="ShipBob") == "shipbob_changelog"
     assert match_demo_case(person_name="Eric Glyman") == "ramp_person"
     # Fallback / non-match
@@ -52,16 +55,16 @@ def test_api_list_demo_cases():
     assert cases["ramp_company"]["hypotheses_count"] > 0
 
 def test_api_create_cached_run():
-    # 1. Start cached run for Brex
+    # 1. Start cached run for Drishti Pandita (Matiks)
     payload = {
-        "company_name": "Brex",
+        "person_name": "Drishti Pandita",
         "use_cache": True
     }
     res = client.post("/api/runs", json=payload)
     assert res.status_code == 200
     data = res.json()
     assert data["cached"] is True
-    assert data["demo_case"] == "brex_compliance"
+    assert data["demo_case"] in ("drishti_matiks", "matiks_community")
     run_id = data["run_id"]
 
     # Verify run details were seeded into SQLite
@@ -69,6 +72,18 @@ def test_api_create_cached_run():
     assert len(details.get("hypotheses", [])) > 0
     assert len(details.get("evidence", [])) > 0
     assert details.get("draft") is not None
+    assert "Drishti" in details.get("draft", {}).get("body", "")
+
+    # 2. Start cached run for Pedro Franceschi (Brex)
+    payload_pedro = {
+        "person_name": "Pedro Franceschi",
+        "use_cache": True
+    }
+    res_pedro = client.post("/api/runs", json=payload_pedro)
+    assert res_pedro.status_code == 200
+    data_pedro = res_pedro.json()
+    assert data_pedro["cached"] is True
+    assert data_pedro["demo_case"] in ("pedro_brex", "brex_compliance")
 
 def test_api_create_fresh_run_when_unchecked():
     # When use_cache is False, it should NOT use cached replay

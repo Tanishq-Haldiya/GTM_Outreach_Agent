@@ -47,16 +47,22 @@ def match_demo_case(
         return "ambiguous_person"
     if "immad" in p_norm:
         return "person_only"
-    if "glyman" in p_norm:
+    if "glyman" in p_norm or "eric" in p_norm:
         return "ramp_person"
+    if "drishti" in p_norm or "pandita" in p_norm:
+        return "drishti_matiks"
+    if "sudhanshu" in p_norm or "bhatia" in p_norm:
+        return "drishti_matiks"
+    if "pedro" in p_norm or "franceschi" in p_norm:
+        return "pedro_brex"
     if c_norm == "mercury" and not p_norm:
         return "mercury_ambiguous"
     if "matiks" in c_norm:
-        return "matiks_community"
+        return "drishti_matiks"
     if "mahalaxmi" in c_norm:
         return "mahalaxmi_employee"
     if "brex" in c_norm:
-        return "brex_compliance"
+        return "pedro_brex"
     if "shipbob" in c_norm:
         return "shipbob_changelog"
     if c_norm == "ramp":
