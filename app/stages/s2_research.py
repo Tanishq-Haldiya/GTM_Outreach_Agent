@@ -1198,6 +1198,7 @@ async def execute_research_fanout(
     fast_channel_names = {
         "hiring_and_operations", "customer_reviews_and_friction",
         "compliance_and_regulatory", "news_and_scale",
+        "employee_voice_and_ops",
     }
     selected_configs = RESEARCHER_CONFIGS if mode == "deep" else [
         cfg for cfg in RESEARCHER_CONFIGS if cfg["name"] in fast_channel_names

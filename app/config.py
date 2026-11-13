@@ -39,7 +39,7 @@ LLM_LARGE_TIMEOUT_SECONDS = 50.0
 LLM_MAX_CONCURRENT_REQUESTS = max(1, int(os.getenv("LLM_MAX_CONCURRENT_REQUESTS", "1")))
 # Fast runs prioritise high-signal channels. "deep" mode still uses every
 # specialist researcher for a broader investigation.
-FAST_RESEARCH_CHANNEL_LIMIT = max(1, int(os.getenv("FAST_RESEARCH_CHANNEL_LIMIT", "4")))
+FAST_RESEARCH_CHANNEL_LIMIT = max(1, int(os.getenv("FAST_RESEARCH_CHANNEL_LIMIT", "5")))
 
 # Aggregator & Directory Domains (Quarantined to prevent entity poisoning)
 AGGREGATOR_DOMAINS = {

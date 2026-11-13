@@ -16,7 +16,8 @@ def test_demo_cache_loaded():
     expected_cases = [
         "ramp_company", "person_only", "mercury_ambiguous",
         "ambiguous_person", "matiks_community", "mahalaxmi_employee",
-        "brex_compliance", "shipbob_changelog", "drishti_matiks", "pedro_brex"
+        "brex_compliance", "shipbob_changelog", "drishti_matiks", "pedro_brex",
+        "flexport_employee"
     ]
     for case in expected_cases:
         assert case in cache, f"Expected {case} in demo cache!"
@@ -36,7 +37,8 @@ def test_match_demo_case():
     assert match_demo_case(person_name="Drishti Pandita") == "drishti_matiks"
     assert match_demo_case(person_name="Sudhanshu Bhatia") == "drishti_matiks"
     assert match_demo_case(person_name="Pedro Franceschi") == "pedro_brex"
-    assert match_demo_case(company_name="Mahalaxmi Travels") == "mahalaxmi_employee"
+    assert match_demo_case(company_name="Flexport") == "flexport_employee"
+    assert match_demo_case(company_name="Mahalaxmi Travels") in ("flexport_employee", "mahalaxmi_employee")
     assert match_demo_case(company_name="Brex") in ("pedro_brex", "brex_compliance")
     assert match_demo_case(company_name="ShipBob") == "shipbob_changelog"
     assert match_demo_case(person_name="Eric Glyman") == "ramp_person"

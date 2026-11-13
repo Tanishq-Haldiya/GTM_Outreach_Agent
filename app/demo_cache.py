@@ -59,8 +59,10 @@ def match_demo_case(
         return "mercury_ambiguous"
     if "matiks" in c_norm:
         return "drishti_matiks"
+    if "flexport" in c_norm:
+        return "flexport_employee"
     if "mahalaxmi" in c_norm:
-        return "mahalaxmi_employee"
+        return "flexport_employee"
     if "brex" in c_norm:
         return "pedro_brex"
     if "shipbob" in c_norm:

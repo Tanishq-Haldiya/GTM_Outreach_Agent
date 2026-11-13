@@ -76,7 +76,8 @@ function loadDemoCase(caseId) {
     drishti_matiks: { person: 'Drishti Pandita' },
     sudhanshu_matiks: { person: 'Sudhanshu Bhatia' },
     matiks_community: { person: 'Drishti Pandita' },
-    mahalaxmi_employee: { company: 'Mahalaxmi Travels', country: 'India', industry: 'Intercity Logistics & Transport' },
+    flexport_employee: { company: 'Flexport', site: 'flexport.com', country: 'United States', industry: 'Supply Chain & Freight Logistics' },
+    mahalaxmi_employee: { company: 'Flexport', site: 'flexport.com', country: 'United States', industry: 'Supply Chain & Freight Logistics' },
     pedro_brex: { company: 'Brex', person: 'Pedro Franceschi', role: 'Co-founder and CEO', site: 'brex.com', industry: 'FinTech / Corporate Card' },
     brex_compliance: { company: 'Brex', person: 'Pedro Franceschi', role: 'Co-founder and CEO', site: 'brex.com', industry: 'FinTech / Corporate Card' },
     shipbob_changelog: { company: 'ShipBob', site: 'shipbob.com', industry: 'E-commerce Fulfillment & Logistics' }
