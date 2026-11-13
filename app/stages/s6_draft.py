@@ -77,7 +77,10 @@ def _build_observable_signal(hook_evidence: EvidenceItem, hypothesis: ProblemHyp
     return signal
 
 
-def _is_usable_problem_statement(problem: str) -> bool:
+def _is_usable_problem_statement(
+    problem: str,
+    hypothesis: Optional[ProblemHypothesis] = None,
+) -> bool:
     text = (problem or "").strip().casefold()
     if len(text) < 18 or len(text) > 200:
         return False
@@ -93,8 +96,23 @@ def _is_usable_problem_statement(problem: str) -> bool:
         "reconcil", "verification", "compliance", "review", "exception", "handoff",
         "document", "process", "capacity", "restriction", "rejection", "error",
         "outage", "incident", "transaction", "candidate", "coordination", "fulfillment",
+        "friction", "frustration", "configuration", "parameter", "setup", "interface",
+        "issue", "bug", "crash", "failure", "fail", "broken", "dispute", "complaint",
+        "disconnect", "inefficiency", "barrier", "workaround", "tedious", "stuck",
+        "drop-off", "slow", "sync", "mismatch", "dropout", "dropouts", "triage",
+        "escalation", "churn", "retention", "disruption", "unresponsive", "overload", "strain",
     )
-    return any(term in text for term in operational_terms)
+    if any(term in text for term in operational_terms):
+        return True
+
+    # If the problem statement text itself used concise phrasing, also check
+    # associated operational fields on the hypothesis (root cause, workflow burden)
+    if hypothesis:
+        aux_text = f"{getattr(hypothesis, 'root_cause', '') or ''} {getattr(hypothesis, 'workflow_burden', '') or ''} {getattr(hypothesis, 'automation_fit', '') or ''}".casefold()
+        if any(term in aux_text for term in operational_terms):
+            return True
+
+    return False
 
 
 def _build_review_fallback(
@@ -185,8 +203,15 @@ async def generate_draft(
 
     # Determine draft style
     is_inferred = hypothesis.layer == "inferred"
-    is_provisional = hypothesis.grounding_status == "provisional" or bool(hypothesis.fallback_info)
-    usable_problem = _is_usable_problem_statement(hypothesis.problem)
+    has_role_fallback = bool(
+        hypothesis.fallback_info is True
+        or (
+            isinstance(getattr(hypothesis, "fallback_info", None), dict)
+            and hypothesis.fallback_info.get("fallback_banner_used")
+        )
+    )
+    is_provisional = (hypothesis.grounding_status == "provisional") or has_role_fallback
+    usable_problem = _is_usable_problem_statement(hypothesis.problem, hypothesis)
     draft_style = "review" if (is_provisional or not usable_problem) else ("inferred" if is_inferred else "direct")
     is_person_hook = bool(
         getattr(hook_evidence, "about", "company") == "person" or

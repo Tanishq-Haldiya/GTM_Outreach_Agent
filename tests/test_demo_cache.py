@@ -87,6 +87,33 @@ def test_api_create_cached_run():
     assert data_pedro["cached"] is True
     assert data_pedro["demo_case"] in ("pedro_brex", "brex_compliance")
 
+def test_dynamic_person_binding_in_cached_run():
+    # User searches for Sudhanshu Bhatia (Co-founder) at Matiks:
+    # Problems and evidences are preserved from Matiks, but tied to Sudhanshu.
+    payload = {
+        "person_name": "Sudhanshu Bhatia",
+        "company_name": "Matiks",
+        "recipient_role": "Co-founder",
+        "use_cache": True
+    }
+    res = client.post("/api/runs", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["cached"] is True
+    run_id = data["run_id"]
+
+    details = get_run_full_details(run_id)
+    assert len(details.get("hypotheses", [])) > 0
+    assert len(details.get("evidence", [])) > 0
+
+    run_row = details.get("run", {})
+    assert run_row.get("person_name") == "Sudhanshu Bhatia"
+    assert run_row.get("recipient_name") == "Sudhanshu Bhatia"
+    assert run_row.get("recipient_title") == "Co-founder"
+    draft_body = details.get("draft", {}).get("body", "")
+    assert "Hi Sudhanshu," in draft_body
+    assert "Hi Drishti," not in draft_body
+
 def test_api_create_fresh_run_when_unchecked():
     # When use_cache is False, it should NOT use cached replay
     payload = {

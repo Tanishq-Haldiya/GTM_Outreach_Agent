@@ -165,3 +165,81 @@ async def test_generate_draft_stated_sets_draft_style_direct():
     prompt_used = call_args[0][0]
     assert "DIRECT" in prompt_used.upper() or "confirmed fact" in prompt_used.lower()
     assert "{observable_signal}" not in prompt_used  # inferred token must NOT appear in direct prompt
+
+
+def test_problem_with_configuration_friction_is_usable():
+    """Operational friction and configuration friction problems must evaluate as usable."""
+    from app.stages.s6_draft import _is_usable_problem_statement
+
+    problem = (
+        "Users experience frustration in the practice section due to rigid configuration requirements "
+        "that prevent them from accessing the same Sprint games used for practice."
+    )
+    assert _is_usable_problem_statement(problem) is True
+
+
+@pytest.mark.anyio
+async def test_winner_with_false_fallback_banner_not_provisional():
+    """A winner with fallback_info['fallback_banner_used']=False must not be treated as provisional."""
+    from app.stages.s6_draft import generate_draft
+
+    hyp = ProblemHypothesis(
+        id="hyp_matiks_1",
+        problem=(
+            "Users experience frustration in the practice section due to rigid configuration requirements "
+            "that prevent them from accessing the same Sprint games used for practice."
+        ),
+        lens="customer_support",
+        layer="stated",
+        grounding_status="verified",
+        root_cause="The practice section lacks a streamlined configuration option.",
+        workflow_burden="Users must manually configure specific digit counts and settings.",
+        automation_fit="Automate practice section parameter selection."
+    )
+    # Simulate s4_score attaching fallback_info where no role fallback occurred
+    hyp.fallback_info = {
+        "fallback_banner_used": False,
+        "banner_message": "",
+        "suggested_roles": []
+    }
+
+    hook_ev = EvidenceItem(
+        id="ev_matiks_1",
+        researcher="reddit_community_intelligence",
+        source_type="community",
+        claim="Players find the app practice section frustrating due to configuration requirements.",
+        excerpt="Frustrated with practice section rigid setup.",
+        url="https://reddit.com/r/matiks/123",
+        title="Matiks Community",
+        signal_type="friction",
+        reliability_tier="B"
+    )
+    solution = SolutionSketch(
+        id="sol_matiks_1",
+        hypothesis_id="hyp_matiks_1",
+        process_name="Practice Mode Standardization",
+        what_it_automates="Automating configuration parameters for practice games",
+        input_consumed="User game mode preferences",
+        key_steps=["Load preset", "Launch Sprint format"],
+        human_checkpoints=["Manual parameter adjustment option"],
+        systems_touched=["Game Config Engine"],
+        impact_direction="Eliminate practice drop-offs",
+        buyer_credibility_hook="Reduces customer support complaints regarding practice configuration.",
+        recommended_persona="Head of Product"
+    )
+
+    with patch("app.stages.s6_draft.call_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = {
+            "subject": "Matiks practice flows",
+            "subject_alternatives": ["practice section setup"],
+            "body": "Hi Sudhanshu,\n\nNoticed players discussing rigid configuration in the practice section...\n\nBest,\nTanishq",
+            "linkedin_note": "Hi Sudhanshu, saw notes on practice configuration friction.",
+            "why_this_hook": "Direct draft leveraging community feedback on practice configuration.",
+            "claim_map": {}
+        }
+        draft = await generate_draft("Matiks", hyp, hook_ev, solution, recipient_name="Sudhanshu")
+
+    assert draft.draft_style == "direct"
+    assert "The available public material does not establish" not in draft.body
+    assert "Matiks practice flows" == draft.subject
+

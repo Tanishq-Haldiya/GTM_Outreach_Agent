@@ -2,10 +2,11 @@ import json
 import time
 import asyncio
 import logging
+import re
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 
-from app.db import get_db, update_run_status
+from app.db import get_db, update_run_status, get_run
 from app.events import emit_event
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,137 @@ def match_demo_case(
 
     return None
 
+def _adapt_cached_content_for_person(
+    cached_run: Dict[str, Any],
+    person_name: Optional[str],
+    hints: Dict[str, Any],
+    drafts: List[Dict[str, Any]],
+    events: List[Dict[str, Any]]
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Dynamically binds a cached company run's evidence and hypotheses
+    to a newly requested person (e.g. Sudhanshu Bhatia instead of Drishti Pandita).
+    Preserves all grounded company research, problems, and evidence while updating
+    recipient fields, draft greetings, role lenses, and streamed event messages.
+    """
+    target_person = (person_name or hints.get("recipient_name") or hints.get("person_name") or "").strip()
+    cached_person = (cached_run.get("person_name") or cached_run.get("recipient_name") or "").strip()
+
+    if not target_person or not cached_person or target_person.casefold() == cached_person.casefold():
+        return cached_run, drafts, events
+
+    target_first = target_person.split()[0]
+    cached_first = cached_person.split()[0]
+
+    target_role = (
+        hints.get("recipient_role")
+        or hints.get("recipient_title")
+        or hints.get("role_hint")
+        or hints.get("role_override")
+        or ""
+    ).strip()
+
+    if not target_role:
+        if "sudhanshu" in target_person.lower():
+            target_role = "Co-founder"
+        elif "karim" in target_person.lower():
+            target_role = "Co-founder & Co-CEO"
+        elif "henrique" in target_person.lower():
+            target_role = "Co-founder & Co-CEO"
+        else:
+            target_role = cached_run.get("recipient_title") or cached_run.get("person_title") or "Executive"
+
+    cached_role = (cached_run.get("recipient_title") or cached_run.get("person_title") or "").strip()
+
+    # 1. Adapt run metadata
+    adapted_run = dict(cached_run)
+    adapted_run["person_name"] = target_person
+    adapted_run["recipient_name"] = target_person
+    adapted_run["recipient_title"] = target_role
+    adapted_run["person_title"] = target_role
+
+    raw_profile = cached_run.get("person_profile")
+    if isinstance(raw_profile, str):
+        try:
+            profile = json.loads(raw_profile)
+        except Exception:
+            profile = {}
+    elif isinstance(raw_profile, dict):
+        profile = dict(raw_profile)
+    else:
+        profile = {}
+
+    if profile:
+        profile["name"] = target_person
+        profile["first_name"] = target_first
+        profile["title_raw"] = target_role
+        profile["title_normalized"] = target_role
+        if any(w in target_role.lower() for w in ["founder", "ceo", "president", "co-founder"]):
+            profile["function"] = "Executive/GM"
+            profile["seniority"] = "C-level"
+        if "alternatives" in profile and isinstance(profile["alternatives"], list):
+            for alt in profile["alternatives"]:
+                if isinstance(alt, dict):
+                    alt["name"] = target_person
+                    alt["first_name"] = target_first
+                    alt["title_raw"] = target_role
+                    alt["title_normalized"] = target_role
+        adapted_run["person_profile"] = profile
+
+    # 2. Adapt drafts
+    adapted_drafts = []
+    for d in drafts:
+        d_copy = dict(d)
+        body = d_copy.get("body", "")
+        why_this_hook = d_copy.get("why_this_hook", "")
+
+        if cached_first and target_first:
+            body = re.sub(rf'\bHi {re.escape(cached_first)}\b', f'Hi {target_first}', body)
+            body = re.sub(rf'\bDear {re.escape(cached_first)}\b', f'Dear {target_first}', body)
+            body = re.sub(rf'\bHey {re.escape(cached_first)}\b', f'Hey {target_first}', body)
+            why_this_hook = re.sub(rf'\b{re.escape(cached_first)}\b', target_first, why_this_hook)
+
+        if cached_person:
+            body = body.replace(cached_person, target_person)
+            why_this_hook = why_this_hook.replace(cached_person, target_person)
+
+        if cached_role and target_role:
+            why_this_hook = why_this_hook.replace(cached_role, target_role)
+
+        d_copy["body"] = body
+        d_copy["why_this_hook"] = why_this_hook
+        adapted_drafts.append(d_copy)
+
+    # 3. Adapt stage events
+    adapted_events = []
+    for ev in events:
+        ev_copy = dict(ev)
+        msg = ev_copy.get("message", "")
+        if cached_person and cached_person in msg:
+            msg = msg.replace(cached_person, target_person)
+        if cached_first and cached_first in msg:
+            msg = msg.replace(cached_first, target_first)
+        if cached_role and target_role and cached_role in msg:
+            msg = msg.replace(cached_role, target_role)
+        ev_copy["message"] = msg
+
+        payload = ev_copy.get("payload")
+        if isinstance(payload, dict):
+            try:
+                payload_str = json.dumps(payload)
+                if cached_person and cached_person in payload_str:
+                    payload_str = payload_str.replace(cached_person, target_person)
+                if cached_first and cached_first in payload_str:
+                    payload_str = payload_str.replace(cached_first, target_first)
+                if cached_role and target_role and cached_role in payload_str:
+                    payload_str = payload_str.replace(cached_role, target_role)
+                ev_copy["payload"] = json.loads(payload_str)
+            except Exception:
+                pass
+        adapted_events.append(ev_copy)
+
+    return adapted_run, adapted_drafts, adapted_events
+
 def create_and_seed_cached_run(
     run_id: str,
     case_id: str,
@@ -88,6 +220,13 @@ def create_and_seed_cached_run(
         raise ValueError(f"Unknown demo case: {case_id}")
 
     cached_run = case_data.get("run", {})
+    drafts = case_data.get("drafts", [])
+    events = case_data.get("events", [])
+
+    adapted_run, adapted_drafts, _ = _adapt_cached_content_for_person(
+        cached_run, person_name, hints, drafts, events
+    )
+
     now = time.time()
 
     conn = get_db()
@@ -122,37 +261,37 @@ def create_and_seed_cached_run(
         )
     """, (
         run_id,
-        company_input or cached_run.get("company_input") or "Target",
+        company_input or adapted_run.get("company_input") or "Target",
         json.dumps(enriched_hints),
         "cached",
         "running",
-        cached_run.get("confidence", 0.95),
-        cached_run.get("confirmation_method", "auto"),
+        adapted_run.get("confidence", 0.95),
+        adapted_run.get("confirmation_method", "auto"),
         now,
         None,
         None,
         0.0,
-        json.dumps(cached_run["confirmed_company"]) if isinstance(cached_run.get("confirmed_company"), dict) else cached_run.get("confirmed_company"),
-        json.dumps(cached_run["company_profile"]) if isinstance(cached_run.get("company_profile"), dict) else cached_run.get("company_profile"),
-        cached_run.get("selected_hypothesis_id"),
-        cached_run.get("final_draft_id"),
+        json.dumps(adapted_run["confirmed_company"]) if isinstance(adapted_run.get("confirmed_company"), dict) else adapted_run.get("confirmed_company"),
+        json.dumps(adapted_run["company_profile"]) if isinstance(adapted_run.get("company_profile"), dict) else adapted_run.get("company_profile"),
+        adapted_run.get("selected_hypothesis_id"),
+        adapted_run.get("final_draft_id"),
         None,
-        person_name or cached_run.get("person_name"),
-        cached_run.get("person_confidence", 1.0),
-        cached_run.get("person_company"),
-        cached_run.get("person_title"),
-        cached_run.get("person_function"),
-        cached_run.get("person_seniority"),
-        json.dumps(cached_run["person_profile"]) if isinstance(cached_run.get("person_profile"), dict) else cached_run.get("person_profile"),
-        cached_run.get("recipient_name"),
-        cached_run.get("recipient_title"),
-        cached_run.get("recipient_lens"),
-        cached_run.get("seniority"),
-        cached_run.get("fallback_banner_used", 0),
-        cached_run.get("fallback_suggestions", "[]")
+        adapted_run.get("person_name") or person_name,
+        adapted_run.get("person_confidence", 1.0),
+        adapted_run.get("person_company"),
+        adapted_run.get("person_title"),
+        adapted_run.get("person_function"),
+        adapted_run.get("person_seniority"),
+        json.dumps(adapted_run["person_profile"]) if isinstance(adapted_run.get("person_profile"), dict) else adapted_run.get("person_profile"),
+        adapted_run.get("recipient_name"),
+        adapted_run.get("recipient_title"),
+        adapted_run.get("recipient_lens"),
+        adapted_run.get("seniority"),
+        adapted_run.get("fallback_banner_used", 0),
+        adapted_run.get("fallback_suggestions", "[]")
     ))
 
-    # 2. Seed Evidence
+    # 2. Seed Evidence (Kept intact from cached company research)
     evidence_items = case_data.get("evidence", [])
     for ev in evidence_items:
         cursor.execute("""
@@ -177,7 +316,7 @@ def create_and_seed_cached_run(
             now
         ))
 
-    # 3. Seed Hypotheses
+    # 3. Seed Hypotheses (Kept intact from cached company research)
     hypotheses_items = case_data.get("hypotheses", [])
     for h in hypotheses_items:
         cursor.execute("""
@@ -203,7 +342,7 @@ def create_and_seed_cached_run(
             h.get("automation_fit")
         ))
 
-    # 4. Seed Solutions
+    # 4. Seed Solutions (Kept intact from cached company research)
     solutions = case_data.get("solutions", [])
     for s in solutions:
         cursor.execute("""
@@ -218,9 +357,8 @@ def create_and_seed_cached_run(
             now
         ))
 
-    # 5. Seed Drafts
-    drafts = case_data.get("drafts", [])
-    for d in drafts:
+    # 5. Seed Drafts (Adapted to the target person)
+    for d in adapted_drafts:
         cursor.execute("""
             INSERT OR REPLACE INTO drafts (
                 id, run_id, subject, body, linkedin_note, claim_map,
@@ -251,7 +389,13 @@ async def replay_cached_demo(run_id: str, case_id: str):
         logger.error(f"Cannot replay: missing case {case_id}")
         return
 
-    events = case_data.get("events", [])
+    run = get_run(run_id) or {}
+    run_person = (run.get("person_name") or run.get("recipient_name") or "").strip()
+    run_role = (run.get("recipient_title") or run.get("person_title") or "").strip()
+
+    _, _, events = _adapt_cached_content_for_person(
+        case_data.get("run", {}), run_person, {"recipient_role": run_role}, [], case_data.get("events", [])
+    )
     pause_on = case_data.get("pause_on")
 
     start_time = time.time()
@@ -320,7 +464,13 @@ async def resume_cached_demo(run_id: str, case_id: str):
         logger.error(f"Cannot resume: missing case {case_id}")
         return
 
-    events = case_data.get("events", [])
+    run = get_run(run_id) or {}
+    run_person = (run.get("person_name") or run.get("recipient_name") or "").strip()
+    run_role = (run.get("recipient_title") or run.get("person_title") or "").strip()
+
+    _, _, events = _adapt_cached_content_for_person(
+        case_data.get("run", {}), run_person, {"recipient_role": run_role}, [], case_data.get("events", [])
+    )
     pause_on = case_data.get("pause_on")
 
     # Find the index of the event after the pause event

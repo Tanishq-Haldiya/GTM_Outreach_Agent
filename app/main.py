@@ -173,7 +173,7 @@ async def create_run(req: RunCreate, background_tasks: BackgroundTasks):
     # If cache is enabled (default), check if this matches any demo scenarios from the approach page
     if req.use_cache:
         matched_case = match_demo_case(
-            company_name=req.company_name,
+            company_name=req.company_name or company_hint,
             person_name=req.person_name,
             role=recip_role,
             demo_case=req.demo_case
