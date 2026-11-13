@@ -115,7 +115,11 @@ async def grant_demo_access(request: Request):
     return response
 
 @app.get("/", response_class=HTMLResponse)
-async def serve_index():
+async def serve_index(request: Request):
+    if request.query_params.get("tab") or request.query_params.get("demo_case"):
+        index_file = web_dir / "index.html"
+        if index_file.exists():
+            return HTMLResponse(content=index_file.read_text(encoding="utf-8"))
     approach_file = web_dir / "approach.html"
     if approach_file.exists():
         return HTMLResponse(content=approach_file.read_text(encoding="utf-8"))
@@ -124,12 +128,12 @@ async def serve_index():
 @app.get("/recipient")
 @app.get("/personalised")
 async def serve_recipient():
-    return RedirectResponse(url="/", status_code=303)
+    return RedirectResponse(url="/?tab=live-run", status_code=303)
 
 @app.get("/tier3")
 @app.get("/person")
 async def serve_tier3():
-    return RedirectResponse(url="/", status_code=303)
+    return RedirectResponse(url="/?tab=live-run", status_code=303)
 
 @app.post("/api/runs")
 async def create_run(req: RunCreate, background_tasks: BackgroundTasks):
