@@ -116,9 +116,9 @@ async def grant_demo_access(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
-    index_file = web_dir / "index.html"
-    if index_file.exists():
-        return HTMLResponse(content=index_file.read_text(encoding="utf-8"))
+    approach_file = web_dir / "approach.html"
+    if approach_file.exists():
+        return HTMLResponse(content=approach_file.read_text(encoding="utf-8"))
     return HTMLResponse("<h1>GTM Outreach Backend Ready</h1>")
 
 @app.get("/recipient")

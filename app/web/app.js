@@ -872,6 +872,8 @@ function renderHypotheses(hypotheses, activeHypId = null) {
       </span>
     `).join('');
 
+    const timelinessVal = (typeof scores.timeliness === 'number') ? scores.timeliness : ((typeof h.timeliness === 'number') ? h.timeliness : 0.7);
+
     // Score breakdown components
     const b = (typeof h.score_breakdown === 'object' && h.score_breakdown !== null) ? h.score_breakdown : {
       evidence_strength: scores.strength || 0.7,
@@ -905,7 +907,6 @@ function renderHypotheses(hypotheses, activeHypId = null) {
     }
 
     // Recency & Staleness Badge (Prominent Top-Level Header Badge)
-    const timelinessVal = (typeof scores.timeliness === 'number') ? scores.timeliness : ((typeof h.timeliness === 'number') ? h.timeliness : 0.7);
     const recencyBadge = timelinessVal >= 0.75
       ? `<span class="hyp-recency-badge recency-active" title="Active and ongoing operational friction in current period">🟢 ACTIVE &amp; ONGOING</span>`
       : (timelinessVal < 0.50
