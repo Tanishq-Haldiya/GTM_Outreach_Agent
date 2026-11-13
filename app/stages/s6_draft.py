@@ -329,6 +329,11 @@ async def generate_draft(
             ]:
                 body_text = re.sub(bad_pat, repl, body_text, flags=re.IGNORECASE).strip()
 
+            # Smooth out condescending or robotic 'as a leader' phrases if generated
+            body_text = re.sub(r'\b[Aa]s a leader\s+(?:in\s+[^,]+|overseeing\s+[^,]+)?,?\s*', '', body_text).strip()
+            body_text = re.sub(r'\b[Aa]s someone leading\s+[^,]+,?\s*', '', body_text).strip()
+            body_text = re.sub(r'\b[Aa]s a leadership team,?\s*', '', body_text).strip()
+
             body_text = _sanitize_raw_metric_copy(body_text, hook_evidence)
 
             linkedin_text = _sanitize_raw_metric_copy(

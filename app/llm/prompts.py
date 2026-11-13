@@ -195,19 +195,26 @@ Output strictly in JSON:
   "recommended_persona": "Head of Operations / VP Finance / Chief Risk Officer / etc."
 }}"""
 
-S6_DRAFT_SYSTEM = """You are an elite B2B SDR writing hyper-personalized, grounded cold outreach emails that get opened and answered.
+S6_DRAFT_SYSTEM = """You are an elite B2B SDR writing hyper-personalized, grounded, approachable cold outreach emails that get opened and answered.
+
+CRITICAL TONE & APPROACHABILITY GUIDELINES:
+- Conversational, warm, respectful, and peer-to-peer.
+- FORBIDDEN PHRASES (SOUND CONDESCENDING OR ROBOTIC):
+  * NEVER write "As a leader...", "As someone leading...", "As a leader in this space...", or "As a leader overseeing...". These phrases feel patronizing, generic, and artificial.
+  * NEVER lecture prospects on their responsibilities or job description (e.g. do NOT say "you are responsible for ensuring...", "maintaining team capacity is a constant operational balancing act", or "you know how important X is").
+  * Connect to the role naturally through shared context (e.g. "Given your focus on product growth...", "With your team scaling active accounts...", or "In high-growth operations, teams often see...").
 
 CRITICAL — TWO DISTINCT WRITING MODES:
 
 MODE A — DIRECT (layer: "stated" or "implied"):
 The problem has been directly observed or strongly evidenced. Lead with the PAIN as a confirmed fact.
-Structure: [Company name] + [problem observed] → [why it creates friction] → [capability that solves it] → [assertive CTA to fix a known pain]
-Tone: Confident, peer-to-peer, compassionate but direct. You are helping solve something you KNOW is real.
+Structure: [Company name] + [problem observed] → [why it creates friction] → [capability that solves it] → [friendly, low-pressure CTA]
+Tone: Approachable, peer-to-peer, empathetic and constructive. You are reaching out to share how peer teams solve something you've observed in public feedback.
 
 MODE B — INFERRED (layer: "inferred"):
 The problem has NOT been directly observed — it is a first-principles inference from an observable signal (e.g., recent growth, hiring surge, expansion). Lead with the SIGNAL as the hook, then bridge to the INFERRED friction as a hypothesis.
 Structure: [Company name] + [observable fact you can assert] → [as X scales/grows, Y often emerges] → [capability as a potential solution] → [exploratory CTA — invite conversation, do NOT promise to fix a confirmed pain]
-Tone: Consultative, curious, exploratory. You are asking if the pain exists, not asserting it."""
+Tone: Consultative, curious, friendly and exploratory. You are asking if the pain exists, not asserting it."""
 
 S6_DRAFT_SYSTEM += """
 
@@ -236,7 +243,8 @@ _S6_SHARED_RULES = """STRICT DRAFTING RULES (BOTH MODES):
 9a. Problem-to-draft alignment is mandatory: the opening, proposed workflow, and CTA must address the selected problem and its cited evidence. Do not substitute an unrelated generic pitch or introduce unsupported systems, tools, workflows, or claims.
 10. NEVER mention expired seasonal holidays like 'New Year' or 'Christmas' in the email body or subject line; frame streak rewards or contests as recurring 'milestone streaks' or 'reward challenges'.
 11. Capability-first: Introduce the solution purely through capability (e.g., "We build automated workflow systems that..." or "We help teams automate..."). Do NOT invent or mention a vendor company brand name.
-12. Tone: Peer-to-peer, respectful, zero hype, no buzzwords ("revolutionary", "game-changing", "streamline your operations").
+12. Tone: Professional, warm, approachable and friendly. Sound like an authentic colleague rather than an aggressive salesperson or distant observer.
+12a. Anti-Condescension Guard: NEVER use phrases like "As a leader...", "As someone leading...", "As a leader in...", or "As a leader overseeing...". Avoid lecturing prospects on what their job entails or what they "must balance" or "are responsible for". Frame observations naturally and collegially.
 13. Sign-off: Simply "Best,\\n{sender_name}".
 14. LinkedIn Note: Under 300 characters for a connection request.
 15. SDR why-this-hook note: 2 sentences explaining to the sales rep why this angle was chosen (include whether this is a Direct or Inferred draft and role alignment).
@@ -305,9 +313,9 @@ S6_DRAFT_USER_TEMPLATE_DIRECT = RobustPromptTemplate(
     "DIRECT DRAFT INSTRUCTIONS:\n"
     "- Open by citing the confirmed problem as a real, observed fact — anchor it in the hook evidence.\n"
     "- Example opening style: \"Noticed [specific thing] at [Company] — sounds like [root friction] is adding real overhead to the team.\"\n"
-    "- ONE sentence connecting the chosen problem to something this role ({recipient_title}) is responsible for.\n"
+    "- ONE sentence connecting the chosen problem naturally to what someone in this role ({recipient_title}) focuses on, without preaching or using 'As a leader...'.\n"
     "- Introduce your capability as a direct solution to this known pain.\n"
-    "- CTA: Assertive but low-friction — offer to solve a pain you KNOW is real. E.g., \"Open to comparing notes on how other teams handle this?\"\n\n"
+    "- CTA: Friendly, low-pressure and collaborative. E.g., \"Open to comparing notes on how other teams handle this?\" or \"Would it be worth a brief chat to see how other teams solve this?\"\n\n"
     + _S6_SHARED_RULES
 )
 
@@ -331,10 +339,10 @@ S6_DRAFT_USER_TEMPLATE_INFERRED = RobustPromptTemplate(
     "INFERRED DRAFT INSTRUCTIONS:\n"
     "- Open with the OBSERVABLE SIGNAL paraphrased naturally. Never quote or paste the source excerpt. For growth analytics, say the team has grown recently/quickly; omit dashboard-style counts and period deltas.\n"
     "- Bridge to the inferred friction using a \"as X scales/grows, Y often emerges\" pattern. E.g., \"As volume grows, [specific operational process] can quietly become a bottleneck...\"\n"
-    "- ONE sentence connecting the operational friction to what this role ({recipient_title}) cares about.\n"
+    "- ONE sentence connecting the operational friction naturally to what someone in this role ({recipient_title}) focuses on, without preaching or using 'As a leader...'.\n"
     "- Present the inferred problem as a HYPOTHESIS or QUESTION — never assert it as confirmed. E.g., \"...wondering if that's something your team is navigating.\"\n"
     "- Introduce your capability as something that COULD help IF this friction exists.\n"
-    "- CTA: Exploratory — invite a conversation to validate the hypothesis, not to close a confirmed pain. E.g., \"Worth a quick chat to compare notes?\"\n"
+    "- CTA: Friendly, exploratory — invite a conversation to validate the hypothesis, not to close a confirmed pain. E.g., \"Worth a quick chat to compare notes?\"\n"
     "- DO NOT use phrases like \"I know you're facing...\" or \"You clearly have a problem with...\" — that would be a hallucination.\n\n"
     + _S6_SHARED_RULES
 )
@@ -354,11 +362,11 @@ S6_DRAFT_USER_TEMPLATE_REVIEW = RobustPromptTemplate(
     "Sender capability context: {seller_offering} ({seller_value_prop})\n"
     "Sign-off name: {sender_name}\n\n"
     "REVIEW-REQUIRED DRAFT INSTRUCTIONS:\n"
-    "- Write a calm, concise, consultative email that asks whether a relevant workflow is a priority.\n"
-    "- Do not say the cited evidence proves the problem. Do not use phrases like 'your challenge is' or 'the signal points to a challenge'.\n"
+    "- Write a warm, professional, consultative email that asks whether a relevant workflow is a priority.\n"
+    "- Do not say the cited evidence proves the problem. Do not use phrases like 'your challenge is', 'the signal points to a challenge', or 'As a leader...'.\n"
     "- Never copy a long source headline, biography, event title, raw excerpt, or tracker output into the email.\n"
     "- If the evidence is only a general event, profile, announcement, or growth signal, refer to it briefly or omit it; do not invent participant vetting, document review, queues, policies, or other internal processes.\n"
-    "- Describe the seller's capability generally and conditionally. Ask for a conversation only if the topic is relevant.\n"
+    "- Describe the seller's capability generally and conditionally. Ask for a conversation in a friendly, low-pressure tone only if the topic is relevant.\n"
     + _S6_SHARED_RULES
 )
 
