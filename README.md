@@ -1,5 +1,4 @@
 # Grounded GTM Outreach Engine
-> **PS-3: Personalised Outreach (From Prospect to Draft)**  
 > Autonomous, evidence-grounded B2B operational intelligence and outreach engine with strict anti-hallucination guardrails, multi-channel researcher fan-out, rate-limit safe demo replay, and interactive human-in-the-loop review.
 
 ![Test Suite](https://img.shields.io/badge/tests-pytest-lightgrey)
