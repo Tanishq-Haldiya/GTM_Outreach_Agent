@@ -2128,6 +2128,7 @@ body.saas-theme .input-group input, body.saas-theme .input-group select, body.sa
 body.saas-theme input, body.saas-theme select, body.saas-theme textarea { color:#1e2c36 !important; background:#fff !important; border-color:#d9e1e5 !important; }
 body.saas-theme input::placeholder, body.saas-theme textarea::placeholder { color:#9aa6ad !important; }
 body.saas-theme .mode-preview { color:#283944; background:rgba(255,255,255,.74); border-color:#e2e9ec; }
+body.saas-theme .mode-preview-copy strong, body.saas-theme #run-mode-title { color:#182631; }
 body.saas-theme .mode-preview-copy span { color:#65747e; }
 body.saas-theme .mode-preview-badge { color:#2459d6; background:#eaf0ff; }
 body.saas-theme .quick-chips .chip { color:#52616c; background:#fff; border-color:#dce4e7; }
