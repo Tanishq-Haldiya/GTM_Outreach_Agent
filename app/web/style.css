@@ -2043,6 +2043,20 @@ body.saas-theme .pipeline-agent-badge.completed { background:rgba(16,185,129,.06
 @media(max-width:620px) { .demo-cases,.process-card { padding:15px; }.demo-case-grid,.process-grid,.evidence-path-grid { grid-template-columns:1fr; }.demo-cases-heading,.process-head,.evidence-playbook-heading { flex-direction:column; }.demo-case { min-height:155px; }.evidence-guardrail { align-items:stretch; flex-direction:column; }.guardrail-arrow { display:none; } }
 
 /* Standalone approach and demo playbook page */
+.approach-caveat-card { margin:18px 0 22px; padding:18px 22px; border:1px solid rgba(218,159,54,.35); border-left:4px solid #da9f36; border-radius:12px; background:rgba(218,159,54,.08); }
+.approach-caveat-card .caveat-badge { display:inline-block; margin-bottom:8px; padding:3px 8px; border-radius:999px; background:rgba(218,159,54,.18); color:#f0bb67; font:700 .68rem 'JetBrains Mono',monospace; letter-spacing:.05em; }
+.approach-caveat-card h4 { margin:0 0 6px; color:#ffd88a; font-size:.95rem; letter-spacing:-.02em; }
+.approach-caveat-card p { margin:0 0 10px; color:#d1dbe6; font-size:.84rem; line-height:1.6; }
+.approach-caveat-card .caveat-tip { padding:10px 14px; border-radius:8px; background:rgba(0,0,0,.25); color:#e4edf8; font-size:.8rem; line-height:1.5; }
+.approach-caveat-card .caveat-tip code { color:#38bdf8; background:rgba(56,189,248,.15); padding:2px 5px; border-radius:4px; font-family:'JetBrains Mono',monospace; }
+
+body.saas-theme .approach-caveat-card { border-color:#ebd49b; border-left-color:#c98822; background:linear-gradient(135deg,#fffcf5 0%,#fff9ec 100%); box-shadow:0 4px 14px rgba(184,139,58,.08); }
+body.saas-theme .approach-caveat-card .caveat-badge { background:#fdf3dc; color:#925f17; border:1px solid #ebd49b; }
+body.saas-theme .approach-caveat-card h4 { color:#273842; font-family:'DM Serif Display',Georgia,serif; font-size:1.1rem; }
+body.saas-theme .approach-caveat-card p { color:#4a5d68; }
+body.saas-theme .approach-caveat-card .caveat-tip { background:#f7f9fa; border:1px solid #e2e8ea; color:#364a55; }
+body.saas-theme .approach-caveat-card .caveat-tip code { color:#0284c7; background:rgba(14,165,233,.1); }
+
 .approach-header { gap:24px; }
 .approach-header-balance { width:200px; visibility:hidden; }
 .approach-brand { color:inherit; text-decoration:none; }

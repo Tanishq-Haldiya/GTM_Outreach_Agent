@@ -53,6 +53,8 @@ Right on the launch form at `http://localhost:8000`, a dedicated toggle switch a
 - **`[ ] Use cached demo results & processes` (Unchecked)**:
   - Executes a fresh, live end-to-end LLM and search pipeline query against live APIs.
 
+> **Operational Note on Live Runs & Upstream LLM Surges**: Free/standard tier LLM APIs (such as Google Gemini Flash) occasionally experience high-demand surges or capacity throttles (HTTP 503/429). During an upstream surge, if deep review extraction degrades, our **Grounding Guard** conservatively withholds ungrounded direct complaints and falls back to inferred hypotheses rather than risking hallucinated pain points. For guaranteed evaluation fidelity without external provider congestion, we recommend testing with the pre-seeded Playbook scenarios (`[x] Use cached demo results`).
+
 ---
 
 ## 🏛 Pipeline Architecture at a Glance

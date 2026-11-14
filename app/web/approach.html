@@ -57,6 +57,16 @@
     <section class="approach-playbooks" aria-label="Demo and evidence playbooks">
                 <section class="demo-cases" aria-labelledby="demo-cases-title">
                   <div class="demo-cases-heading"><div><span class="eyebrow">DEMO PLAYBOOK</span><h3 id="demo-cases-title">One tool, many ways to start</h3><p>Explore flexible target input resolution alongside diverse evidence-gathering across public web, community, employee, regulatory, and technical channels. Choose a scenario to prefill the workspace.</p></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><span class="demo-case-mark">8 SCENARIOS</span><span class="demo-case-mark" style="background:rgba(14,165,233,0.15);color:#38bdf8;border:1px solid rgba(56,189,248,0.3);">⚡ CACHED FOR RECORDING</span></div></div>
+                  <div class="approach-caveat-card" role="note" aria-label="Reviewer note on upstream LLM availability">
+                    <div class="caveat-badge"><span>OPERATIONAL CAVEAT &#183; REVIEWER NOTE</span></div>
+                    <h4>Upstream LLM Capacity Surges &amp; Graceful Degradation</h4>
+                    <p>
+                      Free/standard tier foundational models (such as Google Gemini Flash) occasionally experience peak-traffic demand surges, 503 capacity overloads, or latency spikes. During an upstream surge, our multi-channel extraction safely falls back to raw search snippets to avoid pipeline failure. Because raw search snippets do not contain verbatim customer testimony, the <strong>Grounding Guard</strong> strictly withholds "Direct / Stated" problems rather than hallucinating complaints&#8212;gracefully degrading to "Inferred / Assumed" hypotheses.
+                    </p>
+                    <div class="caveat-tip">
+                      <strong>&#128161; Recommendation for Reviewers:</strong> Use the 8 pre-seeded scenarios below (marked <code>&#9889; CACHED FOR RECORDING</code> or with the default <em>"Use cached demo results"</em> toggle checked in the workspace) to inspect verified multi-tier problem discovery and outreach drafting without dependency on real-time external model provider congestion.
+                    </div>
+                  </div>
                   <div class="demo-case-grid">
                     <article class="demo-case easy"><span class="case-level">CORE · COMPANY ONLY</span><h4>Ramp</h4><p>Start with just company name. Tests automated resolution, financial operations discovery, and uncovers direct 2.3/5 Trustpilot complaints on service and payment bottlenecks.</p><a class="demo-case-cta" href="/?demo_case=ramp_company">Prefill this case <span>&#8599;</span></a></article>
                     <article class="demo-case easy"><span class="case-level">CORE · PERSON ONLY</span><h4>Immad Akhund</h4><p>Start from a founder name alone. Tests profile resolution, automatic employer discovery at Mercury, and directly reported founder concerns around account freezes.</p><a class="demo-case-cta" href="/?demo_case=person_only">Prefill this case <span>&#8599;</span></a></article>
@@ -91,7 +101,7 @@
       <div class="future-scope-grid">
         <article><span>01 &#183; EVIDENCE QUALITY</span><h3>Deduplicate and track freshness</h3><p>Group repeated claims across pages, preserve publication dates, and make source freshness clearer in the evidence trail.</p></article>
         <article><span>02 &#183; LEARNING LOOP</span><h3>Use reviewer decisions as feedback</h3><p>Analyze edits, approvals and rejections to calibrate problem ranking and the confidence required for inferred opportunities.</p></article>
-        <article><span>03 &#183; RATE-AWARE RUNS</span><h3>Improve quota planning and resume</h3><p>Track provider limits across minute and daily windows, queue work safely, and resume incomplete stages without repeating successful calls.</p></article>
+        <article><span>03 &#183; UPSTREAM SURGE RESILIENCE</span><h3>Surge tolerance &amp; dynamic multi-model failover</h3><p>Protect deep extraction against third-party LLM brownouts (e.g. Gemini 503 high-demand surges) by adding automatic hot-failover pools (NVIDIA NIM, Groq, local models) with prompt preservation, ensuring Tier 1 direct complaint extraction never drops down to shallow fallback snippets during peak hours.</p></article>
         <article><span>04 &#183; EVALUATION</span><h3>Benchmark the case library</h3><p>Turn demo scenarios into repeatable evaluations for identity resolution, evidence coverage, grounding and draft relevance.</p></article>
         <article><span>05 &#183; SOURCE COVERAGE</span><h3>Expand region-specific evidence</h3><p>Add carefully reviewed local public records and source integrations while preserving provenance and relevance checks.</p></article>
         <article><span>06 &#183; HISTORY &amp; OPERATIONS</span><h3>Strengthen durable run history</h3><p>Use persistent storage and retention controls so evidence, QA outcomes and reviewer decisions remain available across restarts.</p></article>

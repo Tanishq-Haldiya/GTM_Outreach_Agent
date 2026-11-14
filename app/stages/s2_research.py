@@ -1133,7 +1133,7 @@ async def _run_person_voice_channel(
                         excerpt=snippet[:280],
                         signal_type="leadership_priority",
                         reliability_tier="B",
-                        authority_score=compute_authority_score(url, "person_voice", "leadership_priority", snippet, company.domain)
+                        authority_score=compute_source_authority(url, "person_voice", "B", snippet, company.domain, signal_type="leadership_priority")
                     )
                     items.append(ev_item)
                     if on_evidence_found:
