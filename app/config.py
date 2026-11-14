@@ -14,8 +14,6 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", os.getenv("NVIDIA_NIM_API_KEY", "")).strip()
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 SERPER_API_KEY = os.getenv("SERPER_API_KEY", "")
-DEMO_ACCESS_CODE = os.getenv("DEMO_ACCESS_CODE", "").strip()
-APP_ENV = os.getenv("APP_ENV", "development").strip().lower()
 
 # LLM Models
 # Fast model for S1, S5, S6, S7

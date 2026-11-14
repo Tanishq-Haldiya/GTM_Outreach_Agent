@@ -91,9 +91,8 @@ The engine executes an 8-stage state machine designed to eliminate wrong-company
 This repository includes a Render Blueprint in `render.yaml`. To deploy:
 1. Create a Blueprint in Render from this repository (`main` branch).
 2. Configure environment variables in Render:
-   - `DEMO_ACCESS_CODE` (at least 20 characters)
    - `GROQ_API_KEY`, `GEMINI_API_KEY`, `TAVILY_API_KEY`
-3. The app prompts for the access code and protects endpoints via an HTTP-only secure cookie.
+3. The deployed app is publicly accessible.
 4. Because `app/demo_cache.json` is packaged in git, demo replays work immediately out of the box even before any external API calls are made.
 
 ---

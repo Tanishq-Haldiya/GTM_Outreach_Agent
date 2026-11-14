@@ -10,10 +10,6 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.5
-      - key: APP_ENV
-        value: production
-      - key: DEMO_ACCESS_CODE
-        sync: false
       - key: GROQ_API_KEY
         sync: false
       - key: GEMINI_API_KEY
