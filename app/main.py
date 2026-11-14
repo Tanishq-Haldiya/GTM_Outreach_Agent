@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import ASSUMPTIONS_LOG, BASE_DIR
 from app.db import (
     init_db, insert_run, get_run, get_all_runs,
-    get_run_events, get_run_full_details, get_db
+    get_run_events, get_run_full_details, get_db, update_run_status
 )
 from app.events import subscribe, unsubscribe, format_sse
 from app.models import (
@@ -145,13 +145,21 @@ async def run_events_sse(run_id: str, request: Request):
         queue = await subscribe(run_id)
         try:
             try:
-                last_id = max(0, int(request.headers.get("last-event-id", "0")))
+                query_id = request.query_params.get("last_id")
+                header_id = request.headers.get("last-event-id")
+                last_id = max(0, int(query_id or header_id or "0"))
             except (TypeError, ValueError):
                 last_id = 0
+
+            current_run = get_run(run_id)
+            is_active = current_run and current_run.get("status") in [
+                "running", "drafting", "checking", "scoring", "resolving", "researching", "discovering"
+            ]
+
             for ev in get_run_events(run_id, after_id=last_id):
                 last_id = max(last_id, int(ev["id"]))
                 yield format_sse(ev)
-                if ev.get("event_type") in ["run_completed", "stage_failed"]:
+                if ev.get("event_type") in ["run_completed", "stage_failed"] and not is_active:
                     return
 
             while True:
@@ -255,6 +263,9 @@ async def select_problem(run_id: str, req: SelectProblemRequest, background_task
     run = get_run(run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
+    
+    # Mark run as actively drafting for this hypothesis immediately
+    update_run_status(run_id, "drafting", selected_hypothesis_id=req.hypothesis_id, final_draft_id=None)
     
     background_tasks.add_task(
         generate_pipeline_for_hypothesis,

@@ -4,6 +4,7 @@ let currentDraftId = null;
 let eventSource = null;
 let timerInterval = null;
 let runStartTime = null;
+let highestEventId = 0;
 
 // Tab Switching
 document.querySelectorAll('.nav-tab').forEach(tab => {
@@ -328,6 +329,7 @@ if (launchFormEl) {
 }
 
 function resetLiveWorkspace(targetName) {
+  highestEventId = 0;
   researcherActivity.clear();
   usageRecords.length = 0;
   const processGrid = document.getElementById('researcher-process-grid');
@@ -394,13 +396,19 @@ function resetLiveWorkspace(targetName) {
 }
 
 // SSE Connection
-function connectSSE(runId) {
+function connectSSE(runId, fromCurrent = false) {
   if (eventSource) eventSource.close();
-  eventSource = new EventSource(`/api/runs/${runId}/events`);
+  const url = (fromCurrent && highestEventId > 0)
+    ? `/api/runs/${runId}/events?last_id=${highestEventId}`
+    : `/api/runs/${runId}/events`;
+  eventSource = new EventSource(url);
 
   eventSource.onmessage = (e) => {
     try {
       const event = JSON.parse(e.data);
+      if (event.id && event.id > highestEventId) {
+        highestEventId = event.id;
+      }
       handleStageEvent(event);
     } catch (err) {
       console.error('SSE parse error:', err);
@@ -530,6 +538,7 @@ function handleStageEvent(ev) {
 
     case 'run_completed':
       stopTimer();
+      document.querySelectorAll('.btn-select-hyp').forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
       if (ev.payload && ev.payload.reason === 'insufficient_evidence') {
         setStepperStage('s3', true);
         document.getElementById('active-status-tag').textContent = 'Status: More Evidence Needed';
@@ -543,6 +552,7 @@ function handleStageEvent(ev) {
 
     case 'stage_failed':
       stopTimer();
+      document.querySelectorAll('.btn-select-hyp').forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
       document.getElementById('active-status-tag').textContent = 'Status: FAILED';
       appendLog('error', `❌ Error: ${ev.message}`);
       if (eventSource) eventSource.close();
@@ -1076,6 +1086,18 @@ async function selectProblemHypothesis(hypId) {
   appendLog('s4_score', `Switching active hypothesis to: ${hypId}...`);
   highlightActiveHypothesis(hypId);
 
+  // Set visual stepper indicator to S5
+  setStepperStage('s5');
+  const statusTag = document.getElementById('active-status-tag');
+  if (statusTag) statusTag.textContent = 'Status: S5 SOLUTION DESIGN';
+
+  // Disable hypothesis selection buttons during generation
+  const selectBtns = document.querySelectorAll('.btn-select-hyp');
+  selectBtns.forEach(btn => {
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+  });
+
   // Clear right column indicators while regenerating
   const solutionBox = document.getElementById('solution-content');
   solutionBox.classList.add('empty-state');
@@ -1084,30 +1106,43 @@ async function selectProblemHypothesis(hypId) {
   draftBox.classList.add('empty-state');
   draftBox.textContent = 'Regenerating Grounded Outreach in S6...';
 
-  // Ensure EventSource is connected so live S5, S6, S7 events are received
-  connectSSE(currentRunId);
+  // Ensure EventSource is connected from the latest event so live S5, S6, S7 events are received
+  connectSSE(currentRunId, true);
 
   // Polling fallback to guarantee UI updates even if SSE stream drops
   let pollCount = 0;
   const pollInterval = setInterval(async () => {
     pollCount++;
-    if (pollCount > 25) {
+    if (pollCount > 60) {
       clearInterval(pollInterval);
+      selectBtns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
       return;
     }
     try {
       const res = await fetch(`/api/runs/${currentRunId}`);
       if (res.ok) {
         const data = await res.json();
+        const runStatus = (data.run && data.run.status) || data.status;
+        const selectedHyp = (data.run && data.run.selected_hypothesis_id) || data.selected_hypothesis_id;
+
+        // Render solution as soon as it matches the selected hypothesis
         if (data.solution && data.solution.hypothesis_id === hypId) {
           renderSolution(data.solution);
         }
-        if (data.draft && data.solution && data.solution.hypothesis_id === hypId) {
+
+        // Only render draft once the draft for this hypothesis is ready
+        const isDraftForHyp = data.draft && (
+          data.draft.hypothesis_id === hypId ||
+          (runStatus === 'pending_review' && selectedHyp === hypId && data.solution && data.solution.hypothesis_id === hypId)
+        );
+
+        if (isDraftForHyp) {
           renderDraft(data.draft);
           if (data.draft.quality_report) {
             renderQualityReport(data.draft.quality_report, data.draft);
           }
           clearInterval(pollInterval);
+          selectBtns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
         }
       }
     } catch (e) {
@@ -1124,10 +1159,12 @@ async function selectProblemHypothesis(hypId) {
     if (!res.ok) {
       const err = await res.json();
       clearInterval(pollInterval);
+      selectBtns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
       alert('Error selecting hypothesis: ' + (err.detail || 'Request failed'));
     }
   } catch (err) {
     clearInterval(pollInterval);
+    selectBtns.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; });
     console.error('Error selecting hypothesis:', err);
     alert('Failed to select hypothesis: ' + err.message);
   }
@@ -1771,6 +1808,9 @@ async function viewPastRun(runId) {
     // Switch to tab
     document.querySelector('[data-tab="live-run"]').click();
     resetLiveWorkspace(data.run.company_input);
+    if (data.last_event_id) {
+      highestEventId = data.last_event_id;
+    }
     document.getElementById('active-status-tag').textContent = `Status: ${data.run.status.toUpperCase()}`;
     if (data.run.duration) {
       document.getElementById('live-timer').textContent = `${data.run.duration.toFixed(1)}s`;

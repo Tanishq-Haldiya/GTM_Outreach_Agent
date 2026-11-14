@@ -771,14 +771,15 @@ async def run_stages_s2_to_s8(
     swap_test_status = "PASSED" if quality_report.passed_swap_test else ("UNAVAILABLE" if swap_test_unavailable else "FAILED")
 
     # Persist draft
+    verified_draft.hypothesis_id = winning_hyp.id
     conn.execute(
         """INSERT OR REPLACE INTO drafts 
-           (id, run_id, subject, subject_alternatives, body, linkedin_note, claim_map, why_this_hook, quality_report, version, created_time)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (id, run_id, subject, subject_alternatives, body, linkedin_note, claim_map, why_this_hook, quality_report, version, created_time, hypothesis_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (verified_draft.id, run_id, verified_draft.subject, json.dumps(verified_draft.subject_alternatives),
          verified_draft.body, verified_draft.linkedin_note, json.dumps(verified_draft.claim_map),
          verified_draft.why_this_hook, json.dumps(quality_report.model_dump()),
-         verified_draft.version, time.time())
+         verified_draft.version, time.time(), winning_hyp.id)
     )
     conn.commit()
     conn.close()
@@ -863,14 +864,33 @@ async def generate_pipeline_for_hypothesis(run_id: str, hypothesis_id: str):
 
     # Fetch evidence items
     ev_rows = conn.execute("SELECT * FROM evidence WHERE run_id = ?", (run_id,)).fetchall()
-    evidence_list = [EvidenceItem(**dict(r)) for r in ev_rows]
+    evidence_list = []
+    for r in ev_rows:
+        d = dict(r)
+        clean = {k: v for k, v in d.items() if v is not None}
+        if "relevance_status" not in clean:
+            clean["relevance_status"] = "verified"
+        if "about" not in clean:
+            clean["about"] = "company"
+        if "sensitivity" not in clean:
+            clean["sensitivity"] = "none"
+        if "authority_score" not in clean:
+            clean["authority_score"] = 0.85
+        evidence_list.append(EvidenceItem(**clean))
+
     evidence_map = {e.id: e for e in evidence_list}
+    # Also index without run_id prefix in case an older DB had prefixed IDs
+    for e in evidence_list:
+        if f"{run_id}_" in e.id:
+            evidence_map[e.id.split(f"{run_id}_", 1)[-1]] = e
 
     # Hook evidence
     hook_ev = None
     for eid in hyp.evidence_ids:
-        if eid in evidence_map:
-            candidate = evidence_map[eid]
+        candidate = evidence_map.get(eid)
+        if not candidate:
+            candidate = next((e for e in evidence_list if e.id == eid or e.id.endswith(eid) or eid.endswith(e.id)), None)
+        if candidate:
             if not hook_ev or candidate.reliability_tier < hook_ev.reliability_tier:
                 hook_ev = candidate
     if not hook_ev and evidence_list:
@@ -939,6 +959,7 @@ async def generate_pipeline_for_hypothesis(run_id: str, hypothesis_id: str):
             seniority=role_info.get("seniority"),
             framing_guidance=role_info.get("framing_guidance")
         )
+    draft.hypothesis_id = hyp.id
     s6_dur = time.time() - t_s6
     await emit_event(
         run_id,
@@ -963,14 +984,15 @@ async def generate_pipeline_for_hypothesis(run_id: str, hypothesis_id: str):
     swap_test_status = "PASSED" if quality_report.passed_swap_test else ("UNAVAILABLE" if swap_test_unavailable else "FAILED")
     s7_dur = time.time() - t_s7
 
+    verified_draft.hypothesis_id = hyp.id
     conn.execute(
         """INSERT OR REPLACE INTO drafts 
-           (id, run_id, subject, subject_alternatives, body, linkedin_note, claim_map, why_this_hook, quality_report, version, created_time)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (id, run_id, subject, subject_alternatives, body, linkedin_note, claim_map, why_this_hook, quality_report, version, created_time, hypothesis_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (verified_draft.id, run_id, verified_draft.subject, json.dumps(verified_draft.subject_alternatives),
          verified_draft.body, verified_draft.linkedin_note, json.dumps(verified_draft.claim_map),
          verified_draft.why_this_hook, json.dumps(quality_report.model_dump()),
-         verified_draft.version, time.time())
+         verified_draft.version, time.time(), hyp.id)
     )
     conn.commit()
     conn.close()
@@ -1354,7 +1376,19 @@ async def override_prospect(
     # Branch 2: Role changed (company stayed the same) -> Re-run from S3 using cached/persisted evidence
     conn = get_db()
     ev_rows = conn.execute("SELECT * FROM evidence WHERE run_id = ?", (run_id,)).fetchall()
-    evidence_list = [EvidenceItem(**dict(r)) for r in ev_rows]
+    evidence_list = []
+    for r in ev_rows:
+        d = dict(r)
+        clean = {k: v for k, v in d.items() if v is not None}
+        if "relevance_status" not in clean:
+            clean["relevance_status"] = "verified"
+        if "about" not in clean:
+            clean["about"] = "company"
+        if "sensitivity" not in clean:
+            clean["sensitivity"] = "none"
+        if "authority_score" not in clean:
+            clean["authority_score"] = 0.85
+        evidence_list.append(EvidenceItem(**clean))
     identity_data = run.get("confirmed_company") or {}
     identity = CompanyIdentity(**identity_data) if identity_data else CompanyIdentity(name=new_company, domain="")
 

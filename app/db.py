@@ -71,7 +71,7 @@ def init_db():
     );
 
     CREATE TABLE IF NOT EXISTS evidence (
-        id TEXT PRIMARY KEY,
+        id TEXT NOT NULL,
         run_id TEXT NOT NULL,
         researcher TEXT,
         source_type TEXT,
@@ -84,11 +84,12 @@ def init_db():
         published_date TEXT,
         recency_days INTEGER,
         created_time REAL NOT NULL,
+        PRIMARY KEY (run_id, id),
         FOREIGN KEY(run_id) REFERENCES runs(id)
     );
 
     CREATE TABLE IF NOT EXISTS hypotheses (
-        id TEXT PRIMARY KEY,
+        id TEXT NOT NULL,
         run_id TEXT NOT NULL,
         problem TEXT,
         lens TEXT,
@@ -102,20 +103,22 @@ def init_db():
         root_cause TEXT,
         workflow_burden TEXT,
         automation_fit TEXT,
+        PRIMARY KEY (run_id, id),
         FOREIGN KEY(run_id) REFERENCES runs(id)
     );
 
     CREATE TABLE IF NOT EXISTS solutions (
-        id TEXT PRIMARY KEY,
+        id TEXT NOT NULL,
         run_id TEXT NOT NULL,
         hypothesis_id TEXT,
         payload TEXT,
         created_time REAL NOT NULL,
+        PRIMARY KEY (run_id, id),
         FOREIGN KEY(run_id) REFERENCES runs(id)
     );
 
     CREATE TABLE IF NOT EXISTS drafts (
-        id TEXT PRIMARY KEY,
+        id TEXT NOT NULL,
         run_id TEXT NOT NULL,
         subject TEXT,
         body TEXT,
@@ -125,6 +128,8 @@ def init_db():
         quality_report TEXT,
         version INTEGER DEFAULT 1,
         created_time REAL NOT NULL,
+        hypothesis_id TEXT,
+        PRIMARY KEY (run_id, id),
         FOREIGN KEY(run_id) REFERENCES runs(id)
     );
 
@@ -256,13 +261,44 @@ def init_db():
     for col_name, col_type in [
         ("subject_alternatives", "TEXT"),
         ("recipient_fields_used", "TEXT"),
-        ("person_hook_cited", "INTEGER DEFAULT 0")
+        ("person_hook_cited", "INTEGER DEFAULT 0"),
+        ("hypothesis_id", "TEXT")
     ]:
         if col_name not in existing_draft_cols:
             try:
                 conn.execute(f"ALTER TABLE drafts ADD COLUMN {col_name} {col_type}")
             except Exception:
                 pass
+
+    # Migrate tables to compound PK (run_id, id) if they were previously created with id TEXT PRIMARY KEY
+    for table_name in ["evidence", "hypotheses", "solutions", "drafts"]:
+        try:
+            info = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+            has_run_id = any(c[1] == "run_id" for c in info)
+            run_id_pk = any(c[1] == "run_id" and c[5] > 0 for c in info)
+            if has_run_id and not run_id_pk:
+                col_defs = []
+                col_names = []
+                for col in info:
+                    cid, name, col_type, notnull, dflt, pk = col
+                    col_names.append(name)
+                    notnull_str = " NOT NULL" if (notnull or name in ("id", "run_id")) else ""
+                    dflt_str = f" DEFAULT {dflt}" if dflt is not None else ""
+                    col_defs.append(f"{name} {col_type}{notnull_str}{dflt_str}")
+                col_defs_str = ",\n                ".join(col_defs)
+                conn.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {table_name}_new (
+                        {col_defs_str},
+                        PRIMARY KEY (run_id, id),
+                        FOREIGN KEY(run_id) REFERENCES runs(id)
+                    )
+                """)
+                cols_csv = ", ".join(col_names)
+                conn.execute(f"INSERT OR IGNORE INTO {table_name}_new ({cols_csv}) SELECT {cols_csv} FROM {table_name}")
+                conn.execute(f"DROP TABLE {table_name}")
+                conn.execute(f"ALTER TABLE {table_name}_new RENAME TO {table_name}")
+        except Exception:
+            pass
 
     # Migrate extra clarifications columns if missing
     existing_clarif_cols = [c[1] for c in conn.execute("PRAGMA table_info(clarifications)").fetchall()]
@@ -409,8 +445,18 @@ def get_run_full_details(run_id: str) -> Dict[str, Any]:
             except: pass
         hypotheses.append(h)
         
-    # Solution (get latest)
-    sol_row = conn.execute("SELECT * FROM solutions WHERE run_id = ? ORDER BY created_time DESC LIMIT 1", (run_id,)).fetchone()
+    # Solution: prefer solution for selected_hypothesis_id if available
+    selected_hyp = run.get("selected_hypothesis_id")
+    final_draft = run.get("final_draft_id")
+    sol_row = None
+    if selected_hyp:
+        sol_row = conn.execute(
+            "SELECT * FROM solutions WHERE run_id = ? AND hypothesis_id = ? ORDER BY created_time DESC LIMIT 1",
+            (run_id, selected_hyp)
+        ).fetchone()
+    if not sol_row and run.get("status") not in ["drafting", "checking", "running"]:
+        sol_row = conn.execute("SELECT * FROM solutions WHERE run_id = ? ORDER BY created_time DESC LIMIT 1", (run_id,)).fetchone()
+
     solution = None
     if sol_row:
         sol_d = dict(sol_row)
@@ -418,8 +464,23 @@ def get_run_full_details(run_id: str) -> Dict[str, Any]:
             try: solution = json.loads(sol_d["payload"])
             except: pass
             
-    # Draft (get latest)
-    draft_row = conn.execute("SELECT * FROM drafts WHERE run_id = ? ORDER BY created_time DESC LIMIT 1", (run_id,)).fetchone()
+    # Draft: prefer final_draft_id or draft for selected_hypothesis_id
+    draft_row = None
+    if final_draft:
+        draft_row = conn.execute("SELECT * FROM drafts WHERE id = ? AND run_id = ?", (final_draft, run_id)).fetchone()
+    elif selected_hyp:
+        # Check if drafts table has hypothesis_id column
+        has_hypo_col = any(c[1] == "hypothesis_id" for c in conn.execute("PRAGMA table_info(drafts)").fetchall())
+        if has_hypo_col:
+            draft_row = conn.execute(
+                "SELECT * FROM drafts WHERE run_id = ? AND hypothesis_id = ? ORDER BY created_time DESC LIMIT 1",
+                (run_id, selected_hyp)
+            ).fetchone()
+
+    # If run is actively drafting/checking a new selection, do NOT leak the stale previous draft
+    if not draft_row and run.get("status") not in ["drafting", "checking"]:
+        draft_row = conn.execute("SELECT * FROM drafts WHERE run_id = ? ORDER BY created_time DESC LIMIT 1", (run_id,)).fetchone()
+
     draft = None
     if draft_row:
         draft = dict(draft_row)
@@ -464,6 +525,9 @@ def get_run_full_details(run_id: str) -> Dict[str, Any]:
             except: pass
         sdr_context.append(c)
     
+    max_ev = conn.execute("SELECT MAX(id) FROM stage_events WHERE run_id = ?", (run_id,)).fetchone()
+    last_event_id = int(max_ev[0]) if (max_ev and max_ev[0] is not None) else 0
+
     conn.close()
     
     return {
@@ -475,7 +539,8 @@ def get_run_full_details(run_id: str) -> Dict[str, Any]:
         "reviews": reviews,
         "llm_usage": llm_usage,
         "research_activity": research_activity,
-        "sdr_context": sdr_context
+        "sdr_context": sdr_context,
+        "last_event_id": last_event_id
     }
 
 def insert_sdr_context(

@@ -96,3 +96,58 @@ async def test_descending_ranking_and_interactive_selection():
     # Ensure draft body was not corrupted by QA critique
     assert "fundamentally flawed" not in verified_draft.body.lower()
     print("\nSUCCESS: Verified descending ranking, structured problem diagnosis, and manual hypothesis selection.")
+
+@pytest.mark.anyio
+async def test_select_problem_cached_run_persistence():
+    import time
+    from app.demo_cache import create_and_seed_cached_run
+    from app.orchestrator import generate_pipeline_for_hypothesis
+    from app.db import get_run_full_details
+
+    run_id = f"test_sel_cached_{time.time()}"
+    create_and_seed_cached_run(run_id, 'drishti_matiks', 'Matiks', 'Drishti Pandita', {})
+    
+    details_init = get_run_full_details(run_id)
+    assert len(details_init["hypotheses"]) >= 2
+    hyp1 = details_init["hypotheses"][0]
+    hyp2 = details_init["hypotheses"][1]
+    assert hyp1["id"] != hyp2["id"]
+
+    # Initial state should point to hyp1
+    assert details_init["solution"]["hypothesis_id"] == hyp1["id"]
+
+    # Switch to hyp2
+    await generate_pipeline_for_hypothesis(run_id, hyp2["id"])
+
+    details_after = get_run_full_details(run_id)
+    assert details_after["run"]["selected_hypothesis_id"] == hyp2["id"]
+    assert details_after["solution"]["hypothesis_id"] == hyp2["id"]
+    assert details_after["draft"]["hypothesis_id"] == hyp2["id"]
+    assert details_after["run"]["status"] == "pending_review"
+
+def test_select_problem_endpoint_and_sse_query_param():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.demo_cache import create_and_seed_cached_run
+    from app.db import get_run_full_details
+    import time
+
+    client = TestClient(app)
+    run_id = f"test_sel_ep_{time.time()}"
+    create_and_seed_cached_run(run_id, 'pedro_brex', 'Brex', 'Pedro Franceschi', {})
+
+    details = get_run_full_details(run_id)
+    alt_hyp = details["hypotheses"][1]["id"]
+
+    # 1. Test POST /api/runs/{run_id}/select_problem
+    resp = client.post(f"/api/runs/{run_id}/select_problem", json={"hypothesis_id": alt_hyp})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "processing"
+    assert data["hypothesis_id"] == alt_hyp
+
+    # 2. Test SSE endpoint accepts ?last_id= parameter
+    sse_resp = client.get(f"/api/runs/{run_id}/events?last_id=999999")
+    assert sse_resp.status_code == 200
+    assert "text/event-stream" in sse_resp.headers["content-type"]
+

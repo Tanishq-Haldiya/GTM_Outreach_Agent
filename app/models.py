@@ -51,14 +51,14 @@ class EvidenceItem(BaseModel):
     authority_score: Optional[float] = 0.85 # 0.0 to 1.0 quantitative source authority (None/unverified for sdr_provided)
     published_date: Optional[str] = None
     recency_days: Optional[int] = None
-    relevance_status: str = "verified" # verified, filtered
+    relevance_status: Optional[str] = "verified" # verified, filtered
     relevance_reason: Optional[str] = None
     # Tier 2 additions
     sdr_context_id: Optional[str] = None
     span_start: Optional[int] = None
     span_end: Optional[int] = None
-    about: str = "company" # "person" or "company"
-    sensitivity: str = "none" # "none", "personal", "sensitive"
+    about: Optional[str] = "company" # "person" or "company"
+    sensitivity: Optional[str] = "none" # "none", "personal", "sensitive"
 
 class SDRContextSnippet(BaseModel):
     id: str
@@ -127,6 +127,7 @@ class OutreachDraft(BaseModel):
     draft_style: str = "direct"  # "direct" | "inferred" — controls which S6 template was used
     recipient_fields_used: Optional[Dict[str, Any]] = None
     person_hook_cited: bool = False
+    hypothesis_id: Optional[str] = None
 
 class QualityReport(BaseModel):
     passed_swap_test: bool = True

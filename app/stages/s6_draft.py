@@ -156,6 +156,7 @@ def _build_review_fallback(
         draft_style="review",
         recipient_fields_used=recipient_meta,
         person_hook_cited=False,
+        hypothesis_id=hypothesis.id,
     )
 
 async def generate_draft(
@@ -402,7 +403,8 @@ async def generate_draft(
                 version=1,
                 draft_style=draft_style,
                 recipient_fields_used=recipient_meta,
-                person_hook_cited=is_person_hook
+                person_hook_cited=is_person_hook,
+                hypothesis_id=hypothesis.id
             )
     except Exception as e:
         logger.warning(f"S6 draft generation error: {e}")
@@ -446,5 +448,6 @@ async def generate_draft(
         version=1,
         draft_style=draft_style,
         recipient_fields_used=recipient_meta,
-        person_hook_cited=is_person_hook
+        person_hook_cited=is_person_hook,
+        hypothesis_id=hypothesis.id
     )

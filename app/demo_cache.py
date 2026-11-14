@@ -298,10 +298,11 @@ def create_and_seed_cached_run(
             INSERT OR REPLACE INTO evidence (
                 id, run_id, researcher, source_type, url, title,
                 claim, excerpt, signal_type, reliability_tier,
-                published_date, recency_days, created_time
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                published_date, recency_days, created_time,
+                relevance_status, about, sensitivity
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            f"{run_id}_{ev.get('id', '')}" if ev.get('id') else f"{run_id}_{time.time()}",
+            ev.get("id") or f"{run_id}_{time.time()}",
             run_id,
             ev.get("researcher"),
             ev.get("source_type"),
@@ -313,7 +314,10 @@ def create_and_seed_cached_run(
             ev.get("reliability_tier"),
             ev.get("published_date"),
             ev.get("recency_days", 0),
-            now
+            now,
+            ev.get("relevance_status") or "verified",
+            ev.get("about") or "company",
+            ev.get("sensitivity") or "none"
         ))
 
     # 3. Seed Hypotheses (Kept intact from cached company research)
@@ -358,12 +362,13 @@ def create_and_seed_cached_run(
         ))
 
     # 5. Seed Drafts (Adapted to the target person)
+    first_hyp_id = hypotheses_items[0].get("id") if hypotheses_items else None
     for d in adapted_drafts:
         cursor.execute("""
             INSERT OR REPLACE INTO drafts (
                 id, run_id, subject, body, linkedin_note, claim_map,
-                why_this_hook, quality_report, version, created_time
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                why_this_hook, quality_report, version, created_time, hypothesis_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             d.get("id"),
             run_id,
@@ -374,7 +379,8 @@ def create_and_seed_cached_run(
             d.get("why_this_hook"),
             json.dumps(d.get("quality_report")) if isinstance(d.get("quality_report"), (dict, list)) else d.get("quality_report"),
             d.get("version", 1),
-            now
+            now,
+            d.get("hypothesis_id") or first_hyp_id
         ))
 
     conn.commit()
