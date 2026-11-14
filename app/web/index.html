@@ -29,9 +29,17 @@
       </nav>
     </div>
     <div class="header-right">
-      <div id="preflight-status" class="preflight-bar">
-        <span class="status-indicator"></span>
-        <span class="status-text">Probing Providers...</span>
+      <div class="providers-bar" id="providers-bar">
+        <div class="provider-chip" id="provider-groq" title="Groq API Health & Active Key">
+          <span class="status-dot" id="groq-dot"></span>
+          <span class="provider-name">Groq</span>
+          <span class="provider-status" id="groq-status">Checking...</span>
+        </div>
+        <div class="provider-chip" id="provider-gemini" title="Gemini API Health & Active Key">
+          <span class="status-dot" id="gemini-dot"></span>
+          <span class="provider-name">Gemini</span>
+          <span class="provider-status" id="gemini-status">Checking...</span>
+        </div>
       </div>
     </div>
   </header>

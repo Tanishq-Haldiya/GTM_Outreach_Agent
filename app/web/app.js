@@ -164,27 +164,76 @@ updateRunModePreview();
 
 // Preflight Check on load
 async function checkPreflight() {
-  const el = document.getElementById('preflight-status');
+  const groqDot = document.getElementById('groq-dot');
+  const groqStatus = document.getElementById('groq-status');
+  const geminiDot = document.getElementById('gemini-dot');
+  const geminiStatus = document.getElementById('gemini-status');
+
   try {
     const res = await fetch('/api/preflight');
     const data = await res.json();
-    let allOk = true;
-    for (const [k, v] of Object.entries(data)) {
-      if (v.status !== 'ok') allOk = false;
-    }
-    const indicator = el.querySelector('.status-indicator');
-    const txt = el.querySelector('.status-text');
-    if (allOk) {
-      indicator.classList.add('ready');
-      txt.textContent = 'All Providers Online (Groq · Gemini · Tavily)';
+
+    if (data.groq) {
+      if (data.groq.status === 'ok') {
+        groqDot?.classList.remove('warning', 'error');
+        groqDot?.classList.add('ready');
+        if (groqStatus) groqStatus.textContent = `Online (${data.groq.latency_ms}ms)`;
+      } else {
+        groqDot?.classList.remove('ready', 'warning');
+        groqDot?.classList.add('error');
+        if (groqStatus) groqStatus.textContent = 'Degraded';
+      }
     } else {
-      txt.textContent = 'Providers Partial';
+      if (groqStatus) groqStatus.textContent = 'Unconfigured';
+    }
+
+    if (data.gemini) {
+      if (data.gemini.status === 'ok') {
+        geminiDot?.classList.remove('warning', 'error');
+        geminiDot?.classList.add('ready');
+        if (geminiStatus) geminiStatus.textContent = `Online (${data.gemini.latency_ms}ms)`;
+      } else {
+        geminiDot?.classList.remove('ready', 'warning');
+        geminiDot?.classList.add('error');
+        if (geminiStatus) geminiStatus.textContent = 'Degraded';
+      }
+    } else {
+      if (geminiStatus) geminiStatus.textContent = 'Unconfigured';
     }
   } catch (e) {
-    el.querySelector('.status-text').textContent = 'Preflight offline';
+    if (groqStatus) groqStatus.textContent = 'Offline';
+    if (geminiStatus) geminiStatus.textContent = 'Offline';
   }
 }
 checkPreflight();
+
+function handleKeyRotationEvent(payload) {
+  if (!payload || !payload.provider) return;
+  const prov = payload.provider.toLowerCase();
+  const chip = document.getElementById(`provider-${prov}`);
+  const dot = document.getElementById(`${prov}-dot`);
+  const status = document.getElementById(`${prov}-status`);
+
+  if (chip && dot && status) {
+    chip.classList.add('warning-active');
+    dot.className = 'status-dot warning pulse';
+    const reasonTag = payload.status_code === 503 ? '503 High Demand' : '429 Rate Limit';
+    status.textContent = `Key #${payload.failed_key_index} (${reasonTag}) ➔ #${payload.next_key_index}`;
+  }
+}
+
+function handleProviderSuccess(providerName, keyIndex) {
+  const prov = (providerName || '').toLowerCase();
+  const chip = document.getElementById(`provider-${prov}`);
+  const dot = document.getElementById(`${prov}-dot`);
+  const status = document.getElementById(`${prov}-status`);
+
+  if (chip && dot && status) {
+    chip.classList.remove('warning-active');
+    dot.className = 'status-dot ready';
+    status.textContent = keyIndex ? `Key #${keyIndex} Active` : 'Online';
+  }
+}
 
 // Timer helpers
 function startTimer() {
@@ -416,9 +465,43 @@ function connectSSE(runId, fromCurrent = false) {
   };
 
   eventSource.onerror = (err) => {
-    console.warn('SSE stream closed or error:', err);
-    eventSource.close();
+    console.warn('SSE stream transient error or reconnection...', err);
   };
+
+  startRunWatchdog(runId);
+}
+
+function startRunWatchdog(runId) {
+  if (window._runWatchdog) clearInterval(window._runWatchdog);
+  window._runWatchdog = setInterval(async () => {
+    if (currentRunId !== runId) {
+      clearInterval(window._runWatchdog);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/runs/${runId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const run = data.run || {};
+      const status = run.status || data.status;
+
+      if (status === 'awaiting_person_clarification') {
+        const card = document.getElementById('s0-clarification-card');
+        if (card && card.classList.contains('hidden') && run.person_profile) {
+          let prof = run.person_profile;
+          if (typeof prof === 'string') { try { prof = JSON.parse(prof); } catch(e) {} }
+          handlePersonClarificationNeeded({
+            confidence: prof.confidence || run.person_confidence,
+            person_name: prof.name || run.person_name,
+            candidates: prof.alternatives || [],
+            questions: prof.clarification_questions || []
+          });
+        }
+      } else if (['completed', 'pending_review', 'approved', 'failed', 'insufficient_evidence'].includes(status)) {
+        clearInterval(window._runWatchdog);
+      }
+    } catch (e) {}
+  }, 2500);
 }
 
 // Event Dispatcher
@@ -428,11 +511,17 @@ function handleStageEvent(ev) {
   document.getElementById('active-status-tag').textContent = `Status: ${ev.stage.replace('_', ' ').toUpperCase()}`;
 
   switch (ev.event_type) {
+    case 'llm_key_rotation':
+      handleKeyRotationEvent(ev.payload);
+      break;
     case 'researcher_activity':
       renderResearcherActivity(ev.payload || {});
       break;
     case 'llm_usage':
       appendUsageRecord({ ...ev.payload, stage: ev.stage });
+      if (ev.payload && ev.payload.provider) {
+        handleProviderSuccess(ev.payload.provider, ev.payload.key_index);
+      }
       break;
     case 's0_started':
       setStepperStage('s0');
@@ -1337,6 +1426,13 @@ function handlePersonClarificationNeeded(payload) {
   if (!card) return;
   card.classList.remove('hidden');
 
+  const statusTag = document.getElementById('active-status-tag');
+  if (statusTag) statusTag.textContent = 'Status: ACTION REQUIRED (CONFIRM PROSPECT)';
+
+  setTimeout(() => {
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 100);
+
   const conf = payload.confidence || 0.0;
   const meterFill = document.getElementById('s0-confidence-meter-fill');
   if (meterFill) {
@@ -1370,10 +1466,18 @@ function handlePersonClarificationNeeded(payload) {
           </div>
         ` : ''}
       </div>
-      <button type="button" class="btn btn-secondary" style="margin-top: 10px; font-size: 0.8rem;" onclick="confirmPersonCandidate('${escapeHtml(c.name).replace(/'/g, "\\'")}', '${escapeHtml(c.company_raw).replace(/'/g, "\\'")}', '${escapeHtml(c.title_raw).replace(/'/g, "\\'")}')">
+      <button type="button" class="btn btn-secondary btn-confirm-person" style="margin-top: 10px; font-size: 0.8rem;">
         ✓ Confirm This Prospect
       </button>
     `;
+
+    const btn = cEl.querySelector('.btn-confirm-person');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        confirmPersonCandidate(c.name, c.company_raw || '', c.title_raw || c.title_normalized || '');
+      });
+    }
+
     list.appendChild(cEl);
   });
 }
@@ -1819,6 +1923,22 @@ async function viewPastRun(runId) {
     // Company Profile
     if (data.run.company_profile) {
       renderCompanyProfile(data.run.company_profile, data.run.confirmed_company ? data.run.confirmed_company.name : data.run.company_input);
+    }
+
+    // Check if run is awaiting person clarification
+    if (data.run.status === 'awaiting_person_clarification' && data.run.person_profile) {
+      let prof = data.run.person_profile;
+      if (typeof prof === 'string') {
+        try { prof = JSON.parse(prof); } catch(e) {}
+      }
+      if (prof) {
+        handlePersonClarificationNeeded({
+          confidence: prof.confidence || data.run.person_confidence,
+          person_name: prof.name || data.run.person_name,
+          candidates: prof.alternatives || [],
+          questions: prof.clarification_questions || []
+        });
+      }
     }
 
     // Role chip & fallback banner restoration

@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import time
 import uuid
 import re
@@ -1137,7 +1138,9 @@ async def _run_person_voice_channel(
                     )
                     items.append(ev_item)
                     if on_evidence_found:
-                        on_evidence_found(ev_item)
+                        res = on_evidence_found(ev_item)
+                        if inspect.isawaitable(res):
+                            await res
                     break
         except Exception as e:
             logger.debug(f"Person voice search query error: {e}")

@@ -210,7 +210,7 @@ async def call_openai_compatible(
     temperature: float = 0.2,
     json_mode: bool = False,
     max_tokens: int = 600,
-    timeout: float = 75.0
+    timeout: Optional[float] = 75.0
 ) -> Dict[str, Any]:
     if not keys:
         raise RuntimeError(f"{provider_name} API key not configured")
@@ -240,7 +240,8 @@ async def call_openai_compatible(
             payload["response_format"] = {"type": "json_object"}
 
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            effective_timeout = httpx.Timeout(connect=30.0, read=timeout, write=30.0, pool=30.0) if timeout else httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=30.0)
+            async with httpx.AsyncClient(timeout=effective_timeout) as client:
                 res = await client.post(endpoint, headers=headers, json=payload)
                 if res.status_code in (404, 410):
                     _model_cooldowns[model] = time.time() + 3600.0
@@ -273,7 +274,8 @@ async def call_openai_compatible(
                 return {
                     "content": content,
                     "input_tokens": usage.get("prompt_tokens", 0) or 0,
-                    "output_tokens": usage.get("completion_tokens", 0) or 0
+                    "output_tokens": usage.get("completion_tokens", 0) or 0,
+                    "key_index": (attempt % num_keys) + 1,
                 }
         except Exception as e:
             last_err = e
@@ -408,12 +410,40 @@ async def call_groq(
             usage = getattr(resp, "usage", None)
             # Update current index to the successful key for next time
             _current_groq_idx = key_idx
-            return {"content": content, "input_tokens": getattr(usage, "prompt_tokens", 0) or 0, "output_tokens": getattr(usage, "completion_tokens", 0) or 0}
+            return {
+                "content": content,
+                "input_tokens": getattr(usage, "prompt_tokens", 0) or 0,
+                "output_tokens": getattr(usage, "completion_tokens", 0) or 0,
+                "key_index": key_idx + 1,
+            }
         except Exception as e:
             err_str = str(e).lower()
             last_err = e
             if ("429" in err_str or "rate limit" in err_str or "tpd" in err_str or "itpm" in err_str or "otpm" in err_str) and attempt < num_keys - 1:
+                next_key_idx = (start_idx + attempt + 1) % num_keys
                 logger.warning(f"Groq key #{key_idx + 1} rate limited; trying the next configured key.")
+                run_id = _run_id_context.get()
+                if run_id:
+                    try:
+                        from app.events import emit_event
+                        user_msg = f"⚠️ Groq key #{key_idx + 1} rate-limited; auto-switching to key #{next_key_idx + 1} of {num_keys}..."
+                        await emit_event(
+                            run_id=run_id,
+                            stage=_stage_context.get() or "llm",
+                            event_type="llm_key_rotation",
+                            message=user_msg,
+                            payload={
+                                "provider": "groq",
+                                "failed_key_index": key_idx + 1,
+                                "next_key_index": next_key_idx + 1,
+                                "total_keys": num_keys,
+                                "status_code": 429,
+                                "reason": "rate_limit",
+                                "error_summary": str(e)[:250]
+                            }
+                        )
+                    except Exception as emit_err:
+                        logger.debug("Failed to emit groq rotation event: %s", emit_err)
                 continue
             raise e
 
@@ -466,12 +496,42 @@ async def call_gemini(
                 raise RuntimeError(f"Gemini {model} returned an empty response body.")
             usage = getattr(resp, "usage_metadata", None)
             _current_gemini_idx = key_idx
-            return {"content": text, "input_tokens": getattr(usage, "prompt_token_count", 0) or 0, "output_tokens": getattr(usage, "candidates_token_count", 0) or 0}
+            return {
+                "content": text,
+                "input_tokens": getattr(usage, "prompt_token_count", 0) or 0,
+                "output_tokens": getattr(usage, "candidates_token_count", 0) or 0,
+                "key_index": key_idx + 1,
+            }
         except Exception as e:
             err_str = str(e).lower()
             last_err = e
             if ("429" in err_str or "503" in err_str or "quota" in err_str or "resource_exhausted" in err_str or "unavailable" in err_str or "limit" in err_str) and attempt < num_keys - 1:
+                next_key_idx = (start_idx + attempt + 1) % num_keys
                 logger.warning(f"Gemini key #{key_idx + 1} error ({type(e).__name__}: {e}); trying the next configured key.")
+                run_id = _run_id_context.get()
+                if run_id:
+                    try:
+                        from app.events import emit_event
+                        is_503 = "503" in err_str or "unavailable" in err_str or "high demand" in err_str
+                        reason_label = "503 High Demand" if is_503 else "Rate Limit / Quota"
+                        user_msg = f"⚠️ Gemini key #{key_idx + 1} error ({reason_label}); trying next configured key (#{next_key_idx + 1} of {num_keys})."
+                        await emit_event(
+                            run_id=run_id,
+                            stage=_stage_context.get() or "llm",
+                            event_type="llm_key_rotation",
+                            message=user_msg,
+                            payload={
+                                "provider": "gemini",
+                                "failed_key_index": key_idx + 1,
+                                "next_key_index": next_key_idx + 1,
+                                "total_keys": num_keys,
+                                "status_code": 503 if is_503 else 429,
+                                "reason": "high_demand" if is_503 else "rate_limit",
+                                "error_summary": str(e)[:250]
+                            }
+                        )
+                    except Exception as emit_err:
+                        logger.debug("Failed to emit gemini rotation event: %s", emit_err)
                 continue
             raise e
 
@@ -542,9 +602,12 @@ async def call_llm(
 
     last_error = None
     for provider, model_name in providers:
-        # Give NVIDIA models the full time they need without timing out (up to 75s) as requested
+        # Provider-specific timeout: 120s (2 minutes) for Mistral Large on NVIDIA, 75s for other NVIDIA models
         if provider == "nvidia":
-            attempt_timeout = max(provider_timeout, 75.0)
+            if "mistral" in model_name.lower():
+                attempt_timeout = 120.0  # 2 minutes for Mistral Large
+            else:
+                attempt_timeout = max(provider_timeout, 75.0)
         elif provider == "gemini":
             attempt_timeout = max(25.0, provider_timeout)
         else:
@@ -593,6 +656,7 @@ async def call_llm(
                     from app.events import emit_event
                     await emit_event(run_id, _stage_context.get() or "llm", "llm_usage", "Model request completed.", payload={
                         "provider": provider, "model": model_name,
+                        "key_index": response.get("key_index"),
                         "input_tokens": response["input_tokens"], "output_tokens": response["output_tokens"],
                     })
                 except Exception as usage_err:

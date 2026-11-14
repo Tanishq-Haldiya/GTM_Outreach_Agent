@@ -1,5 +1,6 @@
 import pytest
 import asyncio
+from unittest.mock import patch, AsyncMock
 from app.models import CompanyIdentity, EvidenceItem, ProblemHypothesis
 from app.stages.s4_score import score_and_select_hypothesis
 from app.stages.s5_solution import design_solution
@@ -140,14 +141,21 @@ def test_select_problem_endpoint_and_sse_query_param():
     alt_hyp = details["hypotheses"][1]["id"]
 
     # 1. Test POST /api/runs/{run_id}/select_problem
-    resp = client.post(f"/api/runs/{run_id}/select_problem", json={"hypothesis_id": alt_hyp})
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["status"] == "processing"
-    assert data["hypothesis_id"] == alt_hyp
+    with patch("app.main.generate_pipeline_for_hypothesis", new_callable=AsyncMock):
+        resp = client.post(f"/api/runs/{run_id}/select_problem", json={"hypothesis_id": alt_hyp})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "processing"
+        assert data["hypothesis_id"] == alt_hyp
 
     # 2. Test SSE endpoint accepts ?last_id= parameter
-    sse_resp = client.get(f"/api/runs/{run_id}/events?last_id=999999")
+    from app.events import emit_event
+    from app.db import update_run_status
+    asyncio.run(emit_event(run_id, "s7_check", "run_completed", "Finished", payload={}))
+    update_run_status(run_id, "pending_review")
+
+    sse_resp = client.get(f"/api/runs/{run_id}/events?last_id=0")
     assert sse_resp.status_code == 200
     assert "text/event-stream" in sse_resp.headers["content-type"]
+    assert "run_completed" in sse_resp.text
 

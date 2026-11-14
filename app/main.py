@@ -152,15 +152,20 @@ async def run_events_sse(run_id: str, request: Request):
                 last_id = 0
 
             current_run = get_run(run_id)
-            is_active = current_run and current_run.get("status") in [
-                "running", "drafting", "checking", "scoring", "resolving", "researching", "discovering"
+            is_terminal = current_run and current_run.get("status") in [
+                "completed", "pending_review", "approved", "rejected", "failed", "insufficient_evidence"
             ]
 
+            replayed_terminal = False
             for ev in get_run_events(run_id, after_id=last_id):
                 last_id = max(last_id, int(ev["id"]))
                 yield format_sse(ev)
-                if ev.get("event_type") in ["run_completed", "stage_failed"] and not is_active:
-                    return
+                if ev.get("event_type") in ["run_completed", "stage_failed"]:
+                    replayed_terminal = True
+
+            # Only close SSE stream if the run is in a final terminal state and we finished replaying history
+            if is_terminal and replayed_terminal:
+                return
 
             while True:
                 if await request.is_disconnected():
